@@ -21,8 +21,19 @@ const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   return (
-    <Stack screenOptions={{ headerBackTitle: 'Back' }}>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    <Stack screenOptions={{ headerShown: false, headerBackTitle: 'Back' }}>
+      <Stack.Screen name="index" />
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="go-live" />
+      <Stack.Screen name="room/[mode]" />
+      <Stack.Screen name="wallet" />
+      <Stack.Screen name="income" />
+      <Stack.Screen name="store" />
+      <Stack.Screen name="free" />
+      <Stack.Screen name="ranking" />
+      <Stack.Screen name="auth" />
+      <Stack.Screen name="setup" />
+      <Stack.Screen name="chat/[id]" />
     </Stack>
   );
 }

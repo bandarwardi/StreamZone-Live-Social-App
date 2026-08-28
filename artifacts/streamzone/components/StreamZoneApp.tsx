@@ -3,8 +3,8 @@ import {
   Animated,
   Image,
   ImageBackground,
-  Modal,
   Pressable,
+  Share,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,11 +16,11 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
+import Reanimated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useStreamStore } from '@/store/useStreamStore';
 import colors, { ThemeColors } from '@/constants/colors';
 import {
   avatarImages,
-  chatMessages,
   coinPackages,
   conversations,
   feedPosts,
@@ -54,11 +54,11 @@ const banner = require('../assets/images/discover-banner.jpg');
 const streamParty = require('../assets/images/stream-party.jpg');
 const streamHost = require('../assets/images/stream-host.jpg');
 
-function Icon({ name, size = 20, color, style }: { name: IconName; size?: number; color: string; style?: object }) {
+export function Icon({ name, size = 20, color, style }: { name: IconName; size?: number; color: string; style?: object }) {
   return <Ionicons name={name} size={size} color={color} style={style} />;
 }
 
-function Avatar({ uri, size = 42, ring = false, style }: { uri: string; size?: number; ring?: boolean; style?: object }) {
+export function Avatar({ uri, size = 42, ring = false, style }: { uri: string; size?: number; ring?: boolean; style?: object }) {
   return (
     <View style={[{ width: size, height: size, borderRadius: size / 2 }, ring && { borderWidth: 2, borderColor: '#f423a0', padding: 2 }, style]}>
       <Image source={{ uri }} style={{ width: '100%', height: '100%', borderRadius: size / 2 }} />
@@ -66,7 +66,7 @@ function Avatar({ uri, size = 42, ring = false, style }: { uri: string; size?: n
   );
 }
 
-function PillButton({
+export function PillButton({
   label,
   icon,
   onPress,
@@ -98,7 +98,7 @@ function PillButton({
   );
 }
 
-function Header({
+export function Header({
   title,
   palette,
   onBack,
@@ -125,7 +125,7 @@ function Header({
   );
 }
 
-function Logo({ palette }: { palette: ThemeColors }) {
+export function Logo({ palette }: { palette: ThemeColors }) {
   return (
     <View style={styles.logoWrap}>
       <LinearGradient colors={[palette.pink, palette.purple]} style={styles.logo}>
@@ -150,7 +150,7 @@ function SectionTitle({ title, action, onAction, palette }: { title: string; act
   );
 }
 
-function BottomNav({ activeTab, palette, onTab, onGoLive }: { activeTab: string; palette: ThemeColors; onTab: (tab: 'home' | 'feed' | 'messages' | 'profile') => void; onGoLive: () => void }) {
+export function BottomNav({ activeTab, palette, onTab, onGoLive }: { activeTab: string; palette: ThemeColors; onTab: (tab: 'home' | 'feed' | 'messages' | 'profile') => void; onGoLive: () => void }) {
   const items: { tab: 'home' | 'feed' | 'messages' | 'profile'; label: string; icon: IconName }[] = [
     { tab: 'home', label: 'Home', icon: 'home' },
     { tab: 'feed', label: 'Feed', icon: 'play-circle' },
@@ -180,7 +180,7 @@ function BottomNav({ activeTab, palette, onTab, onGoLive }: { activeTab: string;
   );
 }
 
-function HomeScreen({ palette, onNavigate, onOpenRoom }: { palette: ThemeColors; onNavigate: (screen: Screen) => void; onOpenRoom: (mode: RoomMode) => void }) {
+export function HomeScreen({ palette, onNavigate, onOpenRoom }: { palette: ThemeColors; onNavigate: (screen: Screen) => void; onOpenRoom: (mode: RoomMode) => void }) {
   const [filter, setFilter] = useState('Explore');
   const [query, setQuery] = useState('');
   const filteredRooms = liveRooms.filter((room) => room.name.toLowerCase().includes(query.toLowerCase()));
@@ -261,7 +261,7 @@ function PartyRoomCard({ room, index, palette, onPress }: { room: typeof partyRo
   );
 }
 
-function FeedScreen({ palette, onBack, onOpenRoom }: { palette: ThemeColors; onBack: () => void; onOpenRoom: (mode: RoomMode) => void }) {
+export function FeedScreen({ palette, onBack, onOpenRoom }: { palette: ThemeColors; onBack: () => void; onOpenRoom: (mode: RoomMode) => void }) {
   const togglePostLike = useStreamStore((state) => state.togglePostLike);
   const likedPosts = useStreamStore((state) => state.likedPosts);
   const [tab, setTab] = useState<'Feeds' | 'Video'>('Feeds');
@@ -294,7 +294,7 @@ function VideoPreview({ palette, onOpenRoom }: { palette: ThemeColors; onOpenRoo
   );
 }
 
-function ProfileScreen({ palette, onNavigate, onTheme }: { palette: ThemeColors; onNavigate: (screen: Screen) => void; onTheme: () => void }) {
+export function ProfileScreen({ palette, onNavigate, onTheme }: { palette: ThemeColors; onNavigate: (screen: Screen) => void; onTheme: () => void }) {
   const theme = useStreamStore((state) => state.theme);
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
@@ -317,18 +317,19 @@ function FeatureSection({ title, items, palette, onNavigate }: { title: string; 
   );
 }
 
-function MessagesScreen({ palette, onOpenChat }: { palette: ThemeColors; onOpenChat: () => void }) {
+export function MessagesScreen({ palette, onOpenChat }: { palette: ThemeColors; onOpenChat: (id: string) => void }) {
+  const readConversationIds = useStreamStore((state) => state.readConversationIds);
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 112 }}>
         <View style={styles.messageHeader}><Text style={[styles.pageTitle, { color: palette.primary }]}>Messages</Text><View style={styles.topActions}><Pressable style={[styles.roundAction, { backgroundColor: palette.secondary }]}><Icon name="trash" size={18} color={palette.primary} /></Pressable><Avatar uri={avatarImages[0]} size={36} ring /></View></View>
-        {conversations.map((conversation) => <Pressable key={conversation.id} onPress={onOpenChat} style={({ pressed }) => [styles.conversation, { backgroundColor: palette.card }, pressed && styles.pressed]}><Avatar uri={conversation.image} size={48} ring /><View style={{ flex: 1 }}><Text style={[styles.conversationName, { color: palette.foreground }]}>{conversation.name} <Text style={{ color: palette.gold }}>{conversation.country === 'IN' ? '●' : '✦'}</Text></Text><Text style={[styles.conversationMessage, { color: palette.mutedText }]} numberOfLines={1}>{conversation.message}</Text></View><View style={styles.conversationRight}>{conversation.unread ? <View style={[styles.unread, { backgroundColor: palette.primary }]}><Text style={styles.unreadText}>{conversation.unread}</Text></View> : null}<Text style={[styles.conversationTime, { color: palette.mutedText }]}>{conversation.time}</Text></View></Pressable>)}
+        {conversations.map((conversation) => <Pressable key={conversation.id} onPress={() => onOpenChat(conversation.id)} style={({ pressed }) => [styles.conversation, { backgroundColor: palette.card }, pressed && styles.pressed]}><Avatar uri={conversation.image} size={48} ring /><View style={{ flex: 1 }}><Text style={[styles.conversationName, { color: palette.foreground }]}>{conversation.name} <Text style={{ color: palette.gold }}>{conversation.country === 'IN' ? '●' : '✦'}</Text></Text><Text style={[styles.conversationMessage, { color: palette.mutedText }]} numberOfLines={1}>{conversation.message}</Text></View><View style={styles.conversationRight}>{conversation.unread && !readConversationIds.includes(conversation.id) ? <View style={[styles.unread, { backgroundColor: palette.primary }]}><Text style={styles.unreadText}>{conversation.unread}</Text></View> : null}<Text style={[styles.conversationTime, { color: palette.mutedText }]}>{conversation.time}</Text></View></Pressable>)}
       </ScrollView>
     </View>
   );
 }
 
-function WalletScreen({ palette, onBack, onNavigate }: { palette: ThemeColors; onBack: () => void; onNavigate: (screen: Screen) => void }) {
+export function WalletScreen({ palette, onBack, onNavigate }: { palette: ThemeColors; onBack: () => void; onNavigate: (screen: Screen) => void }) {
   const coins = useStreamStore((state) => state.coins);
   const recharge = useStreamStore((state) => state.recharge);
   return (
@@ -347,7 +348,7 @@ function WalletScreen({ palette, onBack, onNavigate }: { palette: ThemeColors; o
   );
 }
 
-function IncomeScreen({ palette, onBack }: { palette: ThemeColors; onBack: () => void }) {
+export function IncomeScreen({ palette, onBack }: { palette: ThemeColors; onBack: () => void }) {
   const diamonds = useStreamStore((state) => state.diamonds);
   const [amount, setAmount] = useState('21500');
   const [status, setStatus] = useState('');
@@ -362,7 +363,7 @@ function IncomeScreen({ palette, onBack }: { palette: ThemeColors; onBack: () =>
   );
 }
 
-function StoreScreen({ palette, onBack }: { palette: ThemeColors; onBack: () => void }) {
+export function StoreScreen({ palette, onBack }: { palette: ThemeColors; onBack: () => void }) {
   const items = [['Audi A4', 'https://images.unsplash.com/photo-1542282088-fe8426682b8f?auto=format&fit=crop&w=500&q=80', '12,400'], ['Qbic DC', 'https://images.unsplash.com/photo-1553440569-bcc63803a83d?auto=format&fit=crop&w=500&q=80', '13,500'], ['Mustang', 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=500&q=80', '14,500'], ['Mercedes AMG', 'https://images.unsplash.com/photo-1618843479313-40f8afb4b4bd?auto=format&fit=crop&w=500&q=80', '15,500'], ['Mercedes Benz', 'https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=500&q=80', '14,500'], ['Roadster', 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?auto=format&fit=crop&w=500&q=80', '15,500']] as const;
   const [tab, setTab] = useState('Admission Car');
   const [purchased, setPurchased] = useState<string | null>(null);
@@ -377,7 +378,7 @@ function StoreScreen({ palette, onBack }: { palette: ThemeColors; onBack: () => 
   );
 }
 
-function FreeDiamondsScreen({ palette, onBack }: { palette: ThemeColors; onBack: () => void }) {
+export function FreeDiamondsScreen({ palette, onBack }: { palette: ThemeColors; onBack: () => void }) {
   const [message, setMessage] = useState('');
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
@@ -391,7 +392,7 @@ function FreeDiamondsScreen({ palette, onBack }: { palette: ThemeColors; onBack:
   );
 }
 
-function RankingScreen({ palette, onBack }: { palette: ThemeColors; onBack: () => void }) {
+export function RankingScreen({ palette, onBack }: { palette: ThemeColors; onBack: () => void }) {
   const top = [{ name: 'Anaya Khan_23546', value: '2.7 M', image: avatarImages[0] }, { name: 'Alexa deo_00979', value: '2.6 M', image: avatarImages[1] }, { name: 'Saniya lieo_5557', value: '2.4 M', image: avatarImages[2] }, { name: 'Moondile_12345', value: '2.0 M', image: avatarImages[3] }];
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
@@ -401,7 +402,7 @@ function RankingScreen({ palette, onBack }: { palette: ThemeColors; onBack: () =
   );
 }
 
-function AuthScreen({ palette, onBack, onComplete }: { palette: ThemeColors; onBack: () => void; onComplete: () => void }) {
+export function AuthScreen({ palette, onBack, onComplete }: { palette: ThemeColors; onBack: () => void; onComplete: () => void }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
@@ -411,8 +412,8 @@ function AuthScreen({ palette, onBack, onComplete }: { palette: ThemeColors; onB
   );
 }
 
-function SetupScreen({ palette, onBack, onDone }: { palette: ThemeColors; onBack: () => void; onDone: () => void }) {
-  const [name, setName] = useState('hh h');
+export function SetupScreen({ palette, onBack, onDone }: { palette: ThemeColors; onBack: () => void; onDone: () => void }) {
+  const [name, setName] = useState('');
   const [gender, setGender] = useState('Woman');
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
@@ -423,12 +424,20 @@ function SetupScreen({ palette, onBack, onDone }: { palette: ThemeColors; onBack
   );
 }
 
-function ChatScreen({ palette, onBack }: { palette: ThemeColors; onBack: () => void }) {
+export function ChatScreen({ palette, onBack, conversationId }: { palette: ThemeColors; onBack: () => void; conversationId: string }) {
+  const conversation = conversations.find((item) => item.id === conversationId) ?? conversations[0];
+  const markConversationRead = useStreamStore((state) => state.markConversationRead);
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState(chatMessages);
+  const [messages, setMessages] = useState(() => [
+    { id: `${conversation.id}-1`, text: 'Hello', mine: true, type: 'text' as const },
+    { id: `${conversation.id}-2`, text: conversation.message, mine: false, type: 'text' as const },
+    { id: `${conversation.id}-3`, text: conversation.id === 'c1' ? 'How are you dear?' : 'I will reply when I finish this live.', mine: false, type: 'text' as const },
+    { id: `${conversation.id}-4`, text: 'Video Call  •  00:56 min', mine: false, type: 'call' as const },
+  ]);
+  React.useEffect(() => { markConversationRead(conversation.id); }, [conversation.id, markConversationRead]);
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
-      <Header title="Alexa Deo" palette={palette} onBack={onBack} right={<View style={styles.chatHeaderActions}><Icon name="videocam" size={22} color={palette.foreground} /><Icon name="ellipsis-vertical" size={22} color={palette.foreground} /></View>} />
+      <Header title={conversation.name} palette={palette} onBack={onBack} right={<View style={styles.chatHeaderActions}><Icon name="videocam" size={22} color={palette.foreground} /><Icon name="ellipsis-vertical" size={22} color={palette.foreground} /></View>} />
       <ScrollView contentContainerStyle={styles.chatContent}>
         <View style={styles.todayPill}><Text style={[styles.todayText, { color: palette.mutedText }]}>Today</Text></View>
         {messages.map((item) => <View key={item.id} style={[styles.chatBubbleRow, item.mine && { justifyContent: 'flex-end' }]}>{!item.mine ? <Avatar uri={avatarImages[3]} size={30} /> : null}<View style={[styles.chatBubble, { backgroundColor: item.mine ? palette.primary : palette.card }, item.type === 'call' && { paddingVertical: 17 }]}>{item.type === 'call' ? <><View style={styles.callIcon}><Icon name="videocam" size={17} color={palette.primary} /></View><Text style={[styles.callTitle, { color: palette.foreground }]}>Video Call</Text><Text style={[styles.callMeta, { color: palette.mutedText }]}>00:56 min     10:48 pm</Text></> : <Text style={styles.chatBubbleText}>{item.text}</Text>}</View>{item.mine ? <Avatar uri={avatarImages[0]} size={30} /> : null}</View>)}
@@ -440,36 +449,60 @@ function ChatScreen({ palette, onBack }: { palette: ThemeColors; onBack: () => v
   );
 }
 
-function LiveRoom({ palette, mode, onClose }: { palette: ThemeColors; mode: RoomMode; onClose: () => void }) {
+export function LiveRoom({ palette, mode, onClose }: { palette: ThemeColors; mode: RoomMode; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const sendGift = useStreamStore((state) => state.sendGift);
+  const addPkScore = useStreamStore((state) => state.addPkScore);
+  const resetPkScores = useStreamStore((state) => state.resetPkScores);
   const coins = useStreamStore((state) => state.coins);
+  const pkScores = useStreamStore((state) => state.pkScores);
   const following = useStreamStore((state) => state.following);
   const toggleFollowing = useStreamStore((state) => state.toggleFollowing);
   const [giftOpen, setGiftOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [selectedGift, setSelectedGift] = useState(gifts[0]);
   const [showGift, setShowGift] = useState(false);
   const [winner, setWinner] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(124);
+  const [chatFeed, setChatFeed] = useState(['Welcome to the room. Be kind and have fun.', 'John Daveldeo  ·  Very Nice Cloths', 'You received a new follower']);
   const pulse = useMemo(() => new Animated.Value(1), []);
   React.useEffect(() => { Animated.loop(Animated.sequence([Animated.timing(pulse, { toValue: 1.08, duration: 900, useNativeDriver: true }), Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true })])).start(); }, [pulse]);
+  React.useEffect(() => {
+    if (mode !== 'pk' || winner) return;
+    const timer = setInterval(() => setSecondsLeft((value) => {
+      if (value <= 1) { setWinner(true); return 0; }
+      return value - 1;
+    }), 1000);
+    return () => clearInterval(timer);
+  }, [mode, winner]);
+  React.useEffect(() => {
+    if (mode === 'pk') return;
+    const timer = setInterval(() => setChatFeed((items) => [...items, 'A new viewer joined the room'].slice(-5)), 4200);
+    return () => clearInterval(timer);
+  }, [mode]);
+  const scoreTotal = Math.max(pkScores.left + pkScores.right, 1);
+  const formatTimer = `${String(Math.floor(secondsLeft / 60)).padStart(2, '0')}:${String(secondsLeft % 60).padStart(2, '0')}`;
   const sendSelectedGift = () => {
     if (sendGift(selectedGift.price)) {
+      if (mode === 'pk') addPkScore('left', selectedGift.price * 3);
       setShowGift(true);
       setTimeout(() => setShowGift(false), 1600);
     }
   };
+  const shareRoom = () => { Share.share({ message: 'Join me in StreamZone live: https://streamzone.example/live' }); };
   if (mode === 'voice') return <VoiceRoom palette={palette} onClose={onClose} />;
   if (mode === 'multi') return <MultiLiveRoom palette={palette} onClose={onClose} />;
   return (
     <View style={{ flex: 1, backgroundColor: '#17071d' }}>
       <StatusBar style="light" />
-      {mode === 'pk' ? <View style={styles.pkVideoRow}><Image source={streamParty} style={styles.pkImage} /><Image source={streamHost} style={styles.pkImage} /><View style={styles.pkLabel}><Text style={styles.pkLabelText}>PK  02:04:36</Text></View></View> : <ImageBackground source={streamParty} style={styles.roomImage}><LinearGradient colors={['rgba(16,3,24,0.35)', 'rgba(17,5,27,0.96)']} style={StyleSheet.absoluteFillObject} /></ImageBackground>}
-      <View style={[styles.roomTop, { paddingTop: insets.top + 8 }]}><Pressable onPress={onClose} style={styles.roomClose}><Icon name="chevron-back" size={25} color="#fff" /></Pressable><Avatar uri={avatarImages[1]} size={40} ring /><View style={{ flex: 1 }}><Text style={styles.roomHost}>Andrew Filder</Text><Text style={styles.roomHostMeta}>ID : 703120</Text></View><View style={styles.roomViewer}><Icon name="eye" size={14} color="#fff" /><Text style={styles.roomViewerText}>368</Text></View><Pressable style={styles.roomClose}><Icon name="share-social-outline" size={21} color="#fff" /></Pressable><Pressable onPress={onClose} style={styles.roomClose}><Icon name="close" size={23} color="#fff" /></Pressable></View>
-      {mode === 'pk' ? <View style={styles.pkScore}><View style={styles.scoreLabels}><Text style={styles.scoreText}>Win x1  •  15000</Text><Text style={styles.scoreText}>6354  •  Win x0</Text></View><View style={styles.scoreTrack}><View style={[styles.scoreFill, { backgroundColor: palette.cyan, width: '65%' }]} /><View style={[styles.scoreFill, { backgroundColor: palette.pink, width: '35%' }]} /></View></View> : <View style={styles.hostOverlay}><View style={styles.hostPill}><Avatar uri={avatarImages[1]} size={35} /><View><Text style={styles.roomHost}>Saniya lieo</Text><Text style={styles.roomHostMeta}>Live now  ·  12.4K</Text></View></View><PillButton label={following.includes('room-1') ? 'Following' : 'Follow'} icon="person-add" onPress={() => toggleFollowing('room-1')} palette={{ ...palette, primary: '#f423a0' }} small /></View>}
-      <View style={styles.roomChat}>{['Welcome to the room. Be kind and have fun.', 'John Daveldeo  ·  Very Nice Cloths', 'You received a new follower'].map((item, index) => <View key={item} style={[styles.roomChatBubble, index === 0 && { backgroundColor: 'rgba(53,22,73,0.82)' }]}><Text style={styles.roomChatText}>{item}</Text></View>)}</View>
+      {mode === 'pk' ? <View style={styles.pkVideoRow}><Image source={streamParty} style={styles.pkImage} /><Image source={streamHost} style={styles.pkImage} /><View style={styles.pkLabel}><Text style={styles.pkLabelText}>PK  {formatTimer}</Text></View></View> : <ImageBackground source={streamParty} style={styles.roomImage}><LinearGradient colors={['rgba(16,3,24,0.35)', 'rgba(17,5,27,0.96)']} style={StyleSheet.absoluteFillObject} /></ImageBackground>}
+      <View style={[styles.roomTop, { paddingTop: insets.top + 8 }]}><Pressable onPress={onClose} style={styles.roomClose}><Icon name="chevron-back" size={25} color="#fff" /></Pressable><Avatar uri={avatarImages[1]} size={40} ring /><View style={{ flex: 1 }}><Text style={styles.roomHost}>Andrew Filder</Text><Text style={styles.roomHostMeta}>ID : 703120</Text></View><View style={styles.viewerStack}>{avatarImages.slice(2, 5).map((uri) => <Avatar key={uri} uri={uri} size={24} ring style={{ marginLeft: -7 }} />)}<Text style={styles.viewerMore}>+365</Text></View><Pressable onPress={shareRoom} style={styles.roomClose}><Icon name="share-social-outline" size={21} color="#fff" /></Pressable><Pressable onPress={() => setMoreOpen(true)} style={styles.roomClose}><Icon name="ellipsis-horizontal" size={21} color="#fff" /></Pressable><Pressable onPress={onClose} style={styles.roomClose}><Icon name="close" size={23} color="#fff" /></Pressable></View>
+      {mode === 'pk' ? <View style={styles.pkScore}><View style={styles.scoreLabels}><Text style={styles.scoreText}>Win x1  •  {pkScores.left}</Text><Text style={styles.scoreText}>{pkScores.right}  •  Win x0</Text></View><View style={styles.scoreTrack}><View style={[styles.scoreFill, { backgroundColor: palette.cyan, width: `${(pkScores.left / scoreTotal) * 100}%` }]} /><View style={[styles.scoreFill, { backgroundColor: palette.pink, width: `${(pkScores.right / scoreTotal) * 100}%` }]} /></View></View> : <View style={styles.hostOverlay}><View style={styles.hostPill}><Avatar uri={avatarImages[1]} size={35} /><View><Text style={styles.roomHost}>Saniya lieo</Text><Text style={styles.roomHostMeta}>Live now  ·  12.4K</Text></View></View><PillButton label={following.includes('room-1') ? 'Following' : 'Follow'} icon="person-add" onPress={() => toggleFollowing('room-1')} palette={{ ...palette, primary: '#f423a0' }} small /></View>}
+      <View style={styles.roomChat}>{chatFeed.map((item, index) => <View key={`${item}-${index}`} style={[styles.roomChatBubble, index === 0 && { backgroundColor: 'rgba(53,22,73,0.82)' }]}><Text style={styles.roomChatText}>{item}</Text></View>)}</View>
       {showGift ? <Animated.View style={[styles.giftSent, { transform: [{ scale: pulse }] }]}><Icon name={selectedGift.icon as IconName} size={42} color={selectedGift.color} /><Text style={styles.giftSentText}>{selectedGift.label} sent</Text></Animated.View> : null}
-      {winner ? <View style={styles.winnerOverlay}><Icon name="trophy" size={52} color={palette.gold} /><Text style={styles.winnerTitle}>Winner</Text><Text style={styles.winnerCopy}>Saniya lieo takes the round</Text><PillButton label="Back to room" onPress={() => setWinner(false)} palette={palette} /></View> : null}
+      {winner ? <View style={styles.winnerOverlay}><View style={styles.confettiLayer}>{Array.from({ length: 16 }).map((_, index) => <ConfettiPiece key={index} index={index} />)}</View><Icon name="trophy" size={52} color={palette.gold} /><Text style={styles.winnerTitle}>Winner</Text><Text style={styles.winnerCopy}>{pkScores.left >= pkScores.right ? 'Saniya lieo takes the round' : 'Andrew Filder takes the round'}</Text><PillButton label="Back to room" onPress={() => { setWinner(false); if (mode === 'pk') { resetPkScores(); setSecondsLeft(124); } }} palette={palette} /></View> : null}
+      {moreOpen ? <View style={[styles.moreSheet, { backgroundColor: palette.panel }]}><View style={styles.sheetHandle} /><Text style={[styles.sheetTitle, { color: palette.foreground }]}>Room options</Text>{[['flag', 'Report'], ['ban', 'Block'], ['share-social-outline', 'Share'] as [IconName, string]].map(([icon, label]) => <Pressable key={label} onPress={() => { setMoreOpen(false); if (label === 'Share') shareRoom(); }} style={styles.moreItem}><Icon name={icon} size={20} color={palette.primary} /><Text style={[styles.moreText, { color: palette.foreground }]}>{label}</Text><Icon name="chevron-forward" size={17} color={palette.mutedForeground} /></Pressable>)}</View> : null}
       {giftOpen ? <View style={[styles.giftSheet, { backgroundColor: palette.panel }]}><View style={styles.sheetHandle} /><View style={styles.giftSheetHeader}><Text style={[styles.sheetTitle, { color: palette.foreground }]}>Send a gift</Text><Text style={[styles.coinBalance, { color: palette.gold }]}><Icon name="diamond" size={13} color={palette.gold} /> {coins.toLocaleString()}</Text><Pressable onPress={() => setGiftOpen(false)}><Icon name="close" size={21} color={palette.mutedForeground} /></Pressable></View><View style={styles.giftGrid}>{gifts.map((gift) => <Pressable key={gift.id} onPress={() => setSelectedGift(gift)} style={[styles.giftItem, selectedGift.id === gift.id && { borderColor: palette.primary, backgroundColor: palette.secondary }]}><Icon name={gift.icon as IconName} size={27} color={gift.color} /><Text style={[styles.giftLabel, { color: palette.mutedText }]}>{gift.label}</Text><Text style={[styles.giftPrice, { color: palette.gold }]}>{gift.price}</Text></Pressable>)}</View><Pressable onPress={sendSelectedGift} style={[styles.fullButton, { backgroundColor: palette.primary }]}><Text style={styles.fullButtonText}>Send {selectedGift.label}</Text><Icon name="paper-plane" size={16} color="#fff" /></Pressable></View> : <View style={[styles.roomBottom, { paddingBottom: insets.bottom + 9 }]}><View style={[styles.roomInput, { backgroundColor: 'rgba(61,31,74,0.86)' }]}><Text style={styles.roomInputText}>Type something...</Text></View><Pressable onPress={() => setGiftOpen(true)} style={styles.roomAction}><Icon name="gift" size={24} color={palette.gold} /></Pressable><Pressable onPress={() => setMuted(!muted)} style={styles.roomAction}><Icon name={muted ? 'mic-off' : 'mic'} size={22} color="#fff" /></Pressable><Pressable onPress={() => mode === 'pk' ? setWinner(true) : setGiftOpen(true)} style={styles.roomAction}><Icon name={mode === 'pk' ? 'trophy' : 'heart'} size={23} color={palette.primary} /></Pressable></View>}
     </View>
   );
@@ -504,7 +537,7 @@ export default function StreamZoneApp() {
   const openRoom = (mode: RoomMode) => { setRoomMode(mode); setPreviousScreen(screen); setScreen(mode); };
   const goBack = () => setScreen(previousScreen === 'room' || previousScreen === 'pk' || previousScreen === 'multi' || previousScreen === 'voice' ? 'home' : previousScreen);
   const selectTab = (tab: 'home' | 'feed' | 'messages' | 'profile') => { setActiveTab(tab); setScreen(tab === 'home' ? 'home' : tab); };
-  const screenContent = screen === 'home' ? <HomeScreen palette={palette} onNavigate={go} onOpenRoom={openRoom} /> : screen === 'feed' ? <FeedScreen palette={palette} onBack={() => selectTab('home')} onOpenRoom={openRoom} /> : screen === 'messages' ? <MessagesScreen palette={palette} onOpenChat={() => go('chat')} /> : screen === 'profile' ? <ProfileScreen palette={palette} onNavigate={go} onTheme={toggleTheme} /> : screen === 'wallet' ? <WalletScreen palette={palette} onBack={goBack} onNavigate={go} /> : screen === 'income' ? <IncomeScreen palette={palette} onBack={goBack} /> : screen === 'store' ? <StoreScreen palette={palette} onBack={goBack} /> : screen === 'free' ? <FreeDiamondsScreen palette={palette} onBack={goBack} /> : screen === 'ranking' ? <RankingScreen palette={palette} onBack={goBack} /> : screen === 'auth' ? <AuthScreen palette={palette} onBack={goBack} onComplete={() => go('setup')} /> : screen === 'setup' ? <SetupScreen palette={palette} onBack={goBack} onDone={() => setScreen('profile')} /> : screen === 'chat' ? <ChatScreen palette={palette} onBack={goBack} /> : <LiveRoom palette={palette} mode={roomMode} onClose={() => setScreen(previousScreen === 'feed' ? 'feed' : 'home')} />;
+  const screenContent = screen === 'home' ? <HomeScreen palette={palette} onNavigate={go} onOpenRoom={openRoom} /> : screen === 'feed' ? <FeedScreen palette={palette} onBack={() => selectTab('home')} onOpenRoom={openRoom} /> : screen === 'messages' ? <MessagesScreen palette={palette} onOpenChat={() => go('chat')} /> : screen === 'profile' ? <ProfileScreen palette={palette} onNavigate={go} onTheme={toggleTheme} /> : screen === 'wallet' ? <WalletScreen palette={palette} onBack={goBack} onNavigate={go} /> : screen === 'income' ? <IncomeScreen palette={palette} onBack={goBack} /> : screen === 'store' ? <StoreScreen palette={palette} onBack={goBack} /> : screen === 'free' ? <FreeDiamondsScreen palette={palette} onBack={goBack} /> : screen === 'ranking' ? <RankingScreen palette={palette} onBack={goBack} /> : screen === 'auth' ? <AuthScreen palette={palette} onBack={goBack} onComplete={() => go('setup')} /> : screen === 'setup' ? <SetupScreen palette={palette} onBack={goBack} onDone={() => setScreen('profile')} /> : screen === 'chat' ? <ChatScreen palette={palette} conversationId="c1" onBack={goBack} /> : <LiveRoom palette={palette} mode={roomMode} onClose={() => setScreen(previousScreen === 'feed' ? 'feed' : 'home')} />;
   const showNav = ['home', 'feed', 'messages', 'profile'].includes(screen);
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }, compact && { paddingHorizontal: 0 }]}>
