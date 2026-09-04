@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140" width="240" height="140">
+  <defs>
+    <linearGradient id="bgCosmic" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#18002E" />
+      <stop offset="100%" stop-color="#0A0014" />
+    </linearGradient>
+    <linearGradient id="borderCosmic" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C471ED" />
+      <stop offset="100%" stop-color="#7B1FA2" />
+    </linearGradient>
+    <filter id="cosmicGlow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#C471ED" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+  <rect x="8" y="8" width="224" height="104" rx="20" fill="url(#bgCosmic)" stroke="url(#borderCosmic)" stroke-width="3" filter="url(#cosmicGlow)"/>
+  <path d="M40,112 L30,130 L55,112 Z" fill="#0A0014" stroke="url(#borderCosmic)" stroke-width="2"/>
+  <text x="30" y="33" fill="#E1BEE7" font-size="14" font-weight="bold" font-family="sans-serif">✨ GALAXY NEBULA</text>
+  <rect x="30" y="48" width="160" height="8" rx="4" fill="#E1BEE7" fill-opacity="0.8"/>
+  <rect x="30" y="66" width="120" height="8" rx="4" fill="#E1BEE7" fill-opacity="0.5"/>
+</svg>

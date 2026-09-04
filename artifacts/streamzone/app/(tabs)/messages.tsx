@@ -1,7 +1,8 @@
 import React from 'react';
 import { useRouter } from 'expo-router';
 import colors from '@/constants/colors';
-import { BottomNav, MessagesScreen } from '@/components/StreamZoneApp';
+import { BottomNav } from '@/components/StreamZoneApp';
+import { MessagesScreen } from '@/components/DirectMessages';
 import { useStreamStore } from '@/store/useStreamStore';
 
 export default function MessagesRoute() {

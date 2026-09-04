@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140" width="240" height="140">
+  <defs>
+    <linearGradient id="bgPink" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#280012" />
+      <stop offset="100%" stop-color="#100007" />
+    </linearGradient>
+    <linearGradient id="borderPink" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF8DA1" />
+      <stop offset="100%" stop-color="#E91E63" />
+    </linearGradient>
+    <filter id="pinkGlow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#E91E63" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+  <rect x="8" y="8" width="224" height="104" rx="20" fill="url(#bgPink)" stroke="url(#borderPink)" stroke-width="3" filter="url(#pinkGlow)"/>
+  <path d="M40,112 L30,130 L55,112 Z" fill="#100007" stroke="url(#borderPink)" stroke-width="2"/>
+  <text x="30" y="33" fill="#FF8DA1" font-size="14" font-weight="bold" font-family="sans-serif">💖 SWEET LOVE</text>
+  <rect x="30" y="48" width="160" height="8" rx="4" fill="#FF8DA1" fill-opacity="0.8"/>
+  <rect x="30" y="66" width="115" height="8" rx="4" fill="#FF8DA1" fill-opacity="0.5"/>
+</svg>

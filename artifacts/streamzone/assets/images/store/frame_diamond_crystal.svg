@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="diaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E0F7FA" />
+      <stop offset="40%" stop-color="#80DEEA" />
+      <stop offset="80%" stop-color="#26C6DA" />
+      <stop offset="100%" stop-color="#00ACC1" />
+    </linearGradient>
+    <filter id="diaGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <circle cx="100" cy="100" r="90" fill="none" stroke="url(#diaGrad)" stroke-width="8" filter="url(#diaGlow)" />
+  <circle cx="100" cy="100" r="83" fill="none" stroke="#FFF" stroke-width="2" stroke-dasharray="16 8" />
+  <polygon points="100,10 115,22 85,22" fill="#E0F7FA" stroke="#FFF" stroke-width="1" filter="url(#diaGlow)" />
+  <polygon points="85,22 115,22 100,32" fill="#26C6DA" stroke="#FFF" stroke-width="1" />
+</svg>

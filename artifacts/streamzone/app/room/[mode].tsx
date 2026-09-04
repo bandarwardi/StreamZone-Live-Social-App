@@ -5,6 +5,6 @@ import colors from '@/constants/colors';
 
 export default function RoomRoute() {
   const router = useRouter();
-  const { mode } = useLocalSearchParams<{ mode: 'room' | 'pk' | 'multi' | 'voice' }>();
-  return <LiveRoom palette={colors.dark} mode={mode ?? 'room'} onClose={() => router.back()} />;
+  const { mode, broadcastId, channelName, isBroadcaster } = useLocalSearchParams<{ mode: 'room' | 'pk' | 'multi' | 'voice'; broadcastId: string; channelName: string; isBroadcaster: string }>();
+  return <LiveRoom palette={colors.dark} mode={mode ?? 'room'} broadcastId={broadcastId} channelName={channelName} isBroadcaster={isBroadcaster === 'true'} onClose={() => router.back()} />;
 }

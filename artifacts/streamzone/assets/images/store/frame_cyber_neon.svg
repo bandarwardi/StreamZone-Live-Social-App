@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="neonGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F2FE" />
+      <stop offset="50%" stop-color="#4FACFE" />
+      <stop offset="100%" stop-color="#FF0844" />
+    </linearGradient>
+    <filter id="neonGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <circle cx="100" cy="100" r="90" fill="none" stroke="url(#neonGrad)" stroke-width="7" filter="url(#neonGlow)" />
+  <circle cx="100" cy="100" r="85" fill="none" stroke="#00F2FE" stroke-width="2" stroke-dasharray="14 6" />
+  <circle cx="100" cy="100" r="95" fill="none" stroke="#FF0844" stroke-width="1.5" stroke-dasharray="6 8" />
+  <circle cx="100" cy="10" r="4" fill="#00F2FE" filter="url(#neonGlow)" />
+  <circle cx="100" cy="190" r="4" fill="#FF0844" filter="url(#neonGlow)" />
+  <circle cx="10" cy="100" r="4" fill="#4FACFE" filter="url(#neonGlow)" />
+  <circle cx="190" cy="100" r="4" fill="#FF0844" filter="url(#neonGlow)" />
+</svg>

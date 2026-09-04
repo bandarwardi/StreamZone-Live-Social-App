@@ -5,15 +5,25 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import colors from '@/constants/colors';
 import { Logo } from '@/components/StreamZoneApp';
-import { useStreamStore } from '@/store/useStreamStore';
+import { useAuth } from '@/store/authStore';
 
 export default function SplashScreen() {
   const router = useRouter();
-  const loggedIn = useStreamStore((state) => state.loggedIn);
+  const { isAuthenticated, isInitializing, user } = useAuth();
+  
   useEffect(() => {
-    const timer = setTimeout(() => router.replace(loggedIn ? '/(tabs)' : '/auth'), 1500);
+    if (isInitializing) return;
+    const timer = setTimeout(() => {
+      if (!isAuthenticated) {
+        router.replace('/auth');
+      } else if (!user?.isProfileComplete) {
+        router.replace('/setup');
+      } else {
+        router.replace('/(tabs)');
+      }
+    }, 1500);
     return () => clearTimeout(timer);
-  }, [loggedIn, router]);
+  }, [isAuthenticated, isInitializing, user, router]);
   return <LinearGradient colors={[colors.dark.background, '#4d116a', colors.dark.background]} style={styles.root}><StatusBar style="light" /><Logo palette={colors.dark} /><Text style={styles.title}>STREAMZONE</Text><Text style={styles.subtitle}>Live beyond the ordinary</Text><View style={styles.loader}><View style={styles.loaderFill} /></View></LinearGradient>;
 }
 

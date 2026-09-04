@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "577508148472",
+    "project_id": "live-streaming-dc476",
+    "storage_bucket": "live-streaming-dc476.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:577508148472:android:0bef6518ec11edaf8aa70d",
+        "android_client_info": {
+          "package_name": "com.bandarwardi.livewave"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "577508148472-kmh9p35ss28rdco5rsl687d8flq2t2r4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCrklx1j8iJtL8EgMbXRyghmmOYhuHds_M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "577508148472-kmh9p35ss28rdco5rsl687d8flq2t2r4.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

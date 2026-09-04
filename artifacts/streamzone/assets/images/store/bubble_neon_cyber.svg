@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140" width="240" height="140">
+  <defs>
+    <linearGradient id="bgCyber" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#001824" />
+      <stop offset="100%" stop-color="#000910" />
+    </linearGradient>
+    <linearGradient id="borderCyber" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F2FE" />
+      <stop offset="100%" stop-color="#4FACFE" />
+    </linearGradient>
+    <filter id="cyberGlow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="5" flood-color="#00F2FE" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+  <rect x="8" y="8" width="224" height="104" rx="20" fill="url(#bgCyber)" stroke="url(#borderCyber)" stroke-width="3" filter="url(#cyberGlow)"/>
+  <path d="M40,112 L30,130 L55,112 Z" fill="#000910" stroke="url(#borderCyber)" stroke-width="2"/>
+  <circle cx="35" cy="28" r="5" fill="#00F2FE"/>
+  <text x="50" y="32" fill="#00F2FE" font-size="14" font-weight="bold" font-family="sans-serif">CYBER NEON</text>
+  <rect x="30" y="48" width="160" height="8" rx="4" fill="#00F2FE" fill-opacity="0.8"/>
+  <rect x="30" y="66" width="120" height="8" rx="4" fill="#00F2FE" fill-opacity="0.5"/>
+</svg>

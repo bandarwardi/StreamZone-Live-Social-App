@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="sakuraGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE4E8" />
+      <stop offset="50%" stop-color="#FF8DA1" />
+      <stop offset="100%" stop-color="#E91E63" />
+    </linearGradient>
+    <filter id="sakuraGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <circle cx="100" cy="100" r="90" fill="none" stroke="url(#sakuraGrad)" stroke-width="7" filter="url(#sakuraGlow)" />
+  <circle cx="100" cy="100" r="84" fill="none" stroke="#FFF" stroke-width="1.5" />
+  <circle cx="100" cy="12" r="6" fill="#FF8DA1" filter="url(#sakuraGlow)" />
+  <circle cx="94" cy="16" r="5" fill="#FFAEC0" />
+  <circle cx="106" cy="16" r="5" fill="#FFAEC0" />
+  <circle cx="96" cy="22" r="5" fill="#FFAEC0" />
+  <circle cx="104" cy="22" r="5" fill="#FFAEC0" />
+  <circle cx="100" cy="17" r="2.5" fill="#FFD700" />
+</svg>

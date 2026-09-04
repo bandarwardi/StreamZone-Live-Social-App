@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChatScreen } from '@/components/StreamZoneApp';
+import { ChatScreen } from '@/components/DirectMessages';
 import colors from '@/constants/colors';
 
 export default function ChatRoute() {

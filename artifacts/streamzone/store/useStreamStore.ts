@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 type Theme = 'dark' | 'light';
-type Tab = 'home' | 'feed' | 'live' | 'messages' | 'profile';
+type Tab = 'home' | 'rooms' | 'messages' | 'profile';
 
 type StreamStore = {
   theme: Theme;
@@ -14,6 +14,7 @@ type StreamStore = {
   readConversationIds: string[];
   pkScores: { left: number; right: number };
   sentGiftCount: number;
+  beautyOptions: { enabled: boolean; values: Record<string, number> };
   toggleTheme: () => void;
   setActiveTab: (tab: Tab) => void;
   setLoggedIn: (loggedIn: boolean) => void;
@@ -24,6 +25,8 @@ type StreamStore = {
   resetPkScores: () => void;
   sendGift: (price: number) => boolean;
   recharge: (amount: number) => void;
+  setBalances: (balances: { coins?: number; diamonds?: number }) => void;
+  setBeautyOptions: (enabled: boolean, values: Record<string, number>) => void;
 };
 
 export const useStreamStore = create<StreamStore>((set, get) => ({
@@ -37,6 +40,10 @@ export const useStreamStore = create<StreamStore>((set, get) => ({
   readConversationIds: [],
   pkScores: { left: 15000, right: 6354 },
   sentGiftCount: 0,
+  beautyOptions: {
+    enabled: false,
+    values: { 'Smooth Skin': 0.5, 'Whiten': 0.7, 'Rosy': 0.1, 'Sharpness': 0.1 }
+  },
   toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
   setActiveTab: (activeTab) => set({ activeTab }),
   setLoggedIn: (loggedIn) => set({ loggedIn }),
@@ -72,4 +79,10 @@ export const useStreamStore = create<StreamStore>((set, get) => ({
     return true;
   },
   recharge: (amount) => set((state) => ({ coins: state.coins + amount })),
+  setBalances: (balances) =>
+    set((state) => ({
+      coins: balances.coins !== undefined ? balances.coins : state.coins,
+      diamonds: balances.diamonds !== undefined ? balances.diamonds : state.diamonds,
+    })),
+  setBeautyOptions: (enabled, values) => set({ beautyOptions: { enabled, values } }),
 }));

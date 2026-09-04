@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Animated,
   Image,
@@ -11,16 +11,23 @@ import {
   TextInput,
   useWindowDimensions,
   View,
+  Alert,
+  ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
+import { api } from '@/services/api';
 import Reanimated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useStreamStore } from '@/store/useStreamStore';
 import colors, { ThemeColors } from '@/constants/colors';
 import {
   avatarImages,
+  chatMessages,
   coinPackages,
   conversations,
   feedPosts,
@@ -29,11 +36,33 @@ import {
   liveRooms,
   partyRooms,
 } from '@/mock-data';
-
+import {
+  createBroadcast,
+  getMyActiveBroadcast,
+  getBroadcastById,
+  endBroadcast,
+  sendHeartbeat,
+  getLiveBroadcasts,
+  getActiveGifts,
+  getStoreItems,
+  rechargeCoins,
+  convertDiamonds,
+  buyStoreItem,
+  equipStoreItem,
+  unequipStoreItem,
+  getLevels,
+  getMyProgress,
+} from '@/services/api';
+import { socketService } from '@/services/socketService';
+import { useAuth } from '@/store/authStore';
+import AgoraVideoView, { AgoraVideoViewRef } from './AgoraVideoView';
+export { AgoraVideoView };
+export type { AgoraVideoViewRef };
 type IconName = keyof typeof Ionicons.glyphMap;
 type Screen =
   | 'home'
   | 'feed'
+  | 'rooms'
   | 'messages'
   | 'profile'
   | 'wallet'
@@ -48,11 +77,28 @@ type Screen =
   | 'auth'
   | 'setup'
   | 'chat';
+
 type RoomMode = 'room' | 'pk' | 'multi' | 'voice';
+
+declare var require: any;
+declare var process: any;
 
 const banner = require('../assets/images/discover-banner.jpg');
 const streamParty = require('../assets/images/stream-party.jpg');
 const streamHost = require('../assets/images/stream-host.jpg');
+
+export const icons3d = {
+  mall: require('../assets/images/icons/3d_mall_bag_1787991119223.jpg'),
+  crown: require('../assets/images/icons/3d_vip_crown_1787991130238.jpg'),
+  chat: require('../assets/images/icons/3d_chat_bubble_1787991150623.jpg'),
+  tasks: require('../assets/images/icons/3d_daily_tasks_1787991161075.jpg'),
+  heart: require('../assets/images/icons/3d_heart_love_1787991139639.jpg'),
+  badge: require('../assets/images/icons/3d_badge_icon_1787990972515.jpg'),
+  wallet: require('../assets/images/icons/3d_wallet_coin_1787990983379.jpg'),
+  trophy: require('../assets/images/icons/3d_trophy_leaderboard_1787991782963.jpg'),
+  settings: require('../assets/images/icons/3d_settings_gear_1787991860945.jpg'),
+};
+
 
 export function Icon({ name, size = 20, color, style }: { name: IconName; size?: number; color: string; style?: object }) {
   return <Ionicons name={name} size={size} color={color} style={style} />;
@@ -150,19 +196,40 @@ function SectionTitle({ title, action, onAction, palette }: { title: string; act
   );
 }
 
-export function BottomNav({ activeTab, palette, onTab, onGoLive }: { activeTab: string; palette: ThemeColors; onTab: (tab: 'home' | 'feed' | 'messages' | 'profile') => void; onGoLive: () => void }) {
-  const items: { tab: 'home' | 'feed' | 'messages' | 'profile'; label: string; icon: IconName }[] = [
+import { usePathname } from 'expo-router';
+
+export function BottomNav({ activeTab, palette, onTab, onGoLive }: { activeTab?: string; palette: ThemeColors; onTab: (tab: 'home' | 'rooms' | 'messages' | 'profile') => void; onGoLive: () => void }) {
+  const pathname = usePathname();
+  const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  
+  // Determine active tab from pathname
+  let currentTab = 'home';
+  if (pathname.includes('/rooms')) currentTab = 'rooms';
+  else if (pathname.includes('/messages')) currentTab = 'messages';
+  else if (pathname.includes('/profile')) currentTab = 'profile';
+
+  const items: { tab: 'home' | 'rooms' | 'messages' | 'profile'; label: string; icon: IconName }[] = [
     { tab: 'home', label: 'Home', icon: 'home' },
-    { tab: 'feed', label: 'Feed', icon: 'play-circle' },
+    { tab: 'rooms', label: 'Rooms', icon: 'grid' },
     { tab: 'messages', label: 'Inbox', icon: 'chatbubbles' },
     { tab: 'profile', label: 'Profile', icon: 'person' },
   ];
+  const bottomPadding = Math.max(insets.bottom, 8);
   return (
-    <View style={[styles.bottomNav, { backgroundColor: palette.panel, borderTopColor: palette.border }]}>
+    <View style={[
+      styles.bottomNav, 
+      { 
+        backgroundColor: palette.panel, 
+        borderTopColor: palette.border,
+        paddingBottom: bottomPadding,
+        height: 60 + bottomPadding,
+      }
+    ]}>
       {items.slice(0, 2).map((item) => (
         <Pressable key={item.tab} onPress={() => onTab(item.tab)} style={styles.navItem}>
-          <Icon name={item.icon} size={23} color={activeTab === item.tab ? palette.primary : palette.mutedForeground} />
-          <Text style={[styles.navLabel, { color: activeTab === item.tab ? palette.primary : palette.mutedForeground }]}>{item.label}</Text>
+          <Icon name={item.icon} size={23} color={currentTab === item.tab ? palette.primary : palette.mutedForeground} />
+          <Text style={[styles.navLabel, { color: currentTab === item.tab ? palette.primary : palette.mutedForeground }]}>{item.label}</Text>
         </Pressable>
       ))}
       <Pressable testID="button-go-live" onPress={onGoLive} style={({ pressed }) => [styles.liveButton, { backgroundColor: palette.panelAlt, borderColor: palette.primary }, pressed && styles.pressed]}>
@@ -172,29 +239,58 @@ export function BottomNav({ activeTab, palette, onTab, onGoLive }: { activeTab: 
       </Pressable>
       {items.slice(2).map((item) => (
         <Pressable key={item.tab} onPress={() => onTab(item.tab)} style={styles.navItem}>
-          <Icon name={item.icon} size={23} color={activeTab === item.tab ? palette.primary : palette.mutedForeground} />
-          <Text style={[styles.navLabel, { color: activeTab === item.tab ? palette.primary : palette.mutedForeground }]}>{item.label}</Text>
+          {item.tab === 'profile' ? (
+            <Avatar uri={user?.avatarUrl || avatarImages[0]} size={23} ring={currentTab === item.tab} />
+          ) : (
+            <Icon name={item.icon} size={23} color={currentTab === item.tab ? palette.primary : palette.mutedForeground} />
+          )}
+          <Text style={[styles.navLabel, { color: currentTab === item.tab ? palette.primary : palette.mutedForeground }]}>{item.label}</Text>
         </Pressable>
       ))}
     </View>
   );
 }
 
-export function HomeScreen({ palette, onNavigate, onOpenRoom }: { palette: ThemeColors; onNavigate: (screen: Screen) => void; onOpenRoom: (mode: RoomMode) => void }) {
+export function HomeScreen({ palette, onNavigate, onOpenRoom }: { palette: ThemeColors; onNavigate: (screen: Screen) => void; onOpenRoom: (mode: RoomMode, broadcastId?: string, channelName?: string) => void }) {
+  const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState('Explore');
   const [query, setQuery] = useState('');
-  const filteredRooms = liveRooms.filter((room) => room.name.toLowerCase().includes(query.toLowerCase()));
+  const [activeBroadcasts, setActiveBroadcasts] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const router = useRouter();
+
+  useEffect(() => {
+    getLiveBroadcasts().then((data: any) => {
+      if (data) setActiveBroadcasts(data);
+    }).catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (query.trim()) {
+        api.get(`/users/search?q=${query}`).then((res: any) => {
+          setSearchResults(res.data);
+        }).catch(console.error);
+      } else {
+        setSearchResults([]);
+      }
+    }, 400);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [query]);
+
+  const filteredRooms = activeBroadcasts.filter((room) => room.title?.toLowerCase().includes(query.toLowerCase()) || room.broadcaster?.displayName?.toLowerCase().includes(query.toLowerCase()));
   const chips = ['Explore', 'Live rooms', 'Party', 'PK battle'];
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 118 }}>
-        <View style={styles.homeTop}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 90 + insets.bottom }}>
+        <View style={[styles.homeTop, { paddingTop: insets.top + 8 }]}>
           <Logo palette={palette} />
           <View style={styles.topActions}>
             <Pressable onPress={() => onNavigate('ranking')} style={[styles.roundAction, { backgroundColor: palette.secondary }]}>
               <Icon name="trophy" size={20} color={palette.gold} />
             </Pressable>
-            <Avatar uri={avatarImages[0]} size={36} ring />
           </View>
         </View>
         <View style={[styles.searchBar, { backgroundColor: palette.secondary }]}>
@@ -210,6 +306,22 @@ export function HomeScreen({ palette, onNavigate, onOpenRoom }: { palette: Theme
             </Pressable>
           ))}
         </ScrollView>
+        {query.length > 0 && searchResults.length > 0 && (
+          <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+            <SectionTitle title="People" action="View all" onAction={() => {}} palette={palette} />
+            {searchResults.filter((u) => u._id !== user?._id).map((u) => (
+              <Pressable key={u._id} onPress={() => router.push(`/user-profile/${u._id}`)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: palette.border }}>
+                <Avatar uri={u.avatarUrl || 'https://via.placeholder.com/150'} size={48} ring />
+                <View style={{ marginLeft: 12, flex: 1 }}>
+                  <Text style={{ color: palette.foreground, fontSize: 16, fontWeight: 'bold' }}>{u.displayName}</Text>
+                  <Text style={{ color: palette.mutedText, fontSize: 14 }}>@{u.username}</Text>
+                </View>
+                <Icon name="chevron-forward" size={20} color={palette.mutedForeground} />
+              </Pressable>
+            ))}
+          </View>
+        )}
+
         {filter === 'Party' ? (
           <View style={{ paddingHorizontal: 16 }}>
             <SectionTitle title="Party rooms" action="See all" onAction={() => onOpenRoom('voice')} palette={palette} />
@@ -228,7 +340,8 @@ export function HomeScreen({ palette, onNavigate, onOpenRoom }: { palette: Theme
           <View style={{ paddingHorizontal: 16 }}>
             <SectionTitle title={filter === 'Live rooms' ? 'Live now' : 'Trending creators'} action="View all" onAction={() => onNavigate('feed')} palette={palette} />
             <View style={styles.grid}>
-              {filteredRooms.slice(0, 6).map((room, index) => <LiveCard key={room.id} room={room} index={index} palette={palette} onPress={() => onOpenRoom('room')} />)}
+              {filteredRooms.slice(0, 6).map((room, index) => <LiveCard key={room._id} room={room} index={index} palette={palette} onPress={() => onOpenRoom('room', room._id, room.channelName)} />)}
+              {filteredRooms.length === 0 && <Text style={{ color: palette.mutedText, textAlign: 'center', marginTop: 40, width: '100%' }}>No live broadcasts right now.</Text>}
             </View>
           </View>
         )}
@@ -237,15 +350,19 @@ export function HomeScreen({ palette, onNavigate, onOpenRoom }: { palette: Theme
   );
 }
 
-function LiveCard({ room, index, palette, onPress }: { room: typeof liveRooms[number]; index: number; palette: ThemeColors; onPress: () => void }) {
-  const source = index === 0 ? streamParty : index === 1 ? streamHost : { uri: room.image };
+function LiveCard({ room, index, palette, onPress }: { room: any; index: number; palette: ThemeColors; onPress: () => void }) {
+  const source = room.image ? { uri: room.image } : index % 2 === 0 ? streamParty : streamHost;
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.liveCard, { backgroundColor: palette.card }, pressed && styles.pressed]}>
-      <Image source={source} style={styles.liveCardImage} />
-      <LinearGradient colors={['transparent', 'rgba(18,5,26,0.9)']} style={StyleSheet.absoluteFillObject} />
-      <View style={[styles.liveBadge, { backgroundColor: palette.pink }]}><View style={styles.liveDot} /><Text style={styles.liveBadgeText}>LIVE</Text></View>
-      <View style={styles.viewerBadge}><Icon name="eye" size={12} color="#ffffff" /><Text style={styles.viewerText}>{room.viewers}</Text></View>
-      <View style={styles.liveCardBottom}><Text style={styles.liveName}>{room.name}</Text><View style={styles.liveMeta}><Avatar uri={room.image} size={17} /><Text style={styles.liveHandle}>{room.category}</Text></View></View>
+    <Pressable onPress={onPress} style={styles.liveCard}>
+      <ImageBackground source={source} style={styles.liveCardImage} imageStyle={{ borderRadius: 16 }}>
+        <LinearGradient colors={['transparent', 'rgba(16,3,24,0.85)']} style={StyleSheet.absoluteFillObject} />
+        <View style={styles.liveBadge}><Text style={styles.liveBadgeText}>LIVE</Text></View>
+        <View style={styles.viewerBadge}><Icon name="person" size={11} color="#fff" /><Text style={styles.viewerText}>{Math.floor(Math.random() * 100) + 1}</Text></View>
+        <View style={styles.liveCardBottom}>
+          <Text style={styles.liveName} numberOfLines={1}>{room.title || 'Live Broadcast'}</Text>
+          <View style={styles.liveMeta}><Text style={styles.liveHandle} numberOfLines={1}>{room.broadcaster?.displayName || 'Host'}</Text></View>
+        </View>
+      </ImageBackground>
     </Pressable>
   );
 }
@@ -262,13 +379,14 @@ function PartyRoomCard({ room, index, palette, onPress }: { room: typeof partyRo
 }
 
 export function FeedScreen({ palette, onBack, onOpenRoom }: { palette: ThemeColors; onBack: () => void; onOpenRoom: (mode: RoomMode) => void }) {
+  const { user } = useAuth();
   const togglePostLike = useStreamStore((state) => state.togglePostLike);
   const likedPosts = useStreamStore((state) => state.likedPosts);
   const [tab, setTab] = useState<'Feeds' | 'Video'>('Feeds');
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 112 }}>
-        <View style={styles.feedHeader}><View style={styles.feedTabs}>{(['Feeds', 'Video'] as const).map((item) => <Pressable key={item} onPress={() => setTab(item)}><Text style={[styles.feedTab, { color: tab === item ? palette.primary : palette.mutedForeground }]}>{item}</Text>{tab === item ? <View style={[styles.feedUnderline, { backgroundColor: palette.primary }]} /> : null}</Pressable>)}</View><Avatar uri={avatarImages[0]} size={35} /></View>
+        <View style={styles.feedHeader}><View style={styles.feedTabs}>{(['Feeds', 'Video'] as const).map((item) => <Pressable key={item} onPress={() => setTab(item)}><Text style={[styles.feedTab, { color: tab === item ? palette.primary : palette.mutedForeground }]}>{item}</Text>{tab === item ? <View style={[styles.feedUnderline, { backgroundColor: palette.primary }]} /> : null}</Pressable>)}</View></View>
         {tab === 'Video' ? <VideoPreview palette={palette} onOpenRoom={onOpenRoom} /> : feedPosts.map((post) => (
           <View key={post.id} style={styles.post}>
             <View style={styles.postAuthor}><Avatar uri={post.image} size={40} ring /><View style={{ flex: 1 }}><Text style={[styles.postName, { color: palette.foreground }]}>{post.name}</Text><Text style={[styles.postCountry, { color: palette.mutedText }]}><Icon name="location" size={12} color={palette.primary} /> {post.country}</Text></View><PillButton label={useStreamStore.getState().following.includes(post.id) ? 'Following' : 'Follow'} icon="person-add" onPress={() => useStreamStore.getState().toggleFollowing(post.id)} palette={palette} small /><Icon name="ellipsis-vertical" size={20} color={palette.foreground} /></View>
@@ -295,25 +413,98 @@ function VideoPreview({ palette, onOpenRoom }: { palette: ThemeColors; onOpenRoo
 }
 
 export function ProfileScreen({ palette, onNavigate, onTheme }: { palette: ThemeColors; onNavigate: (screen: Screen) => void; onTheme: () => void }) {
-  const theme = useStreamStore((state) => state.theme);
+  const insets = useSafeAreaInsets();
+  const { user, logout } = useAuth();
+  const router = useRouter();
+  
+  const age = user?.birthdate ? Math.floor((Date.now() - new Date(user.birthdate).getTime()) / (1000 * 60 * 60 * 24 * 365.25)) : 18;
+  const genderSymbol = user?.gender === 'Man' ? '♂' : '♀';
+  const streamCoins = useStreamStore((state: any) => state.coins);
+  const streamDiamonds = useStreamStore((state: any) => state.diamonds);
+  const coinsDisplay = (user?.coins !== undefined ? user.coins : streamCoins).toLocaleString();
+  const diamondsDisplay = (user?.diamonds !== undefined ? user.diamonds : streamDiamonds).toLocaleString();
+
+  // Real level data from user object
+  const realLevel = (user as any)?.currentLevel || 1;
+  const levelBadgeUrl = (user as any)?.levelBadgeUrl;
+  const activeFrame = (user as any)?.activeFrame;
+  
+  const handleSignOut = async () => {
+    await logout();
+    onNavigate('auth');
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 112 }}>
-        <View style={styles.profileTop}><Pressable onPress={() => onNavigate('home')} style={styles.iconButton}><Icon name="chevron-back" size={25} color={palette.foreground} /></Pressable><Text style={[styles.headerTitle, { color: palette.foreground }]}>My Profile</Text><Pressable onPress={onTheme} style={[styles.roundAction, { backgroundColor: palette.secondary }]}><Icon name={theme === 'dark' ? 'sunny-outline' : 'moon-outline'} size={19} color={palette.gold} /></Pressable></View>
-        <View style={styles.profileIdentity}><Avatar uri={avatarImages[0]} size={98} ring /><View style={{ flex: 1 }}><Text style={[styles.profileName, { color: palette.foreground }]}>hh h</Text><Text style={[styles.profileId, { color: palette.mutedText }]}>ID: 10652430  <Icon name="copy-outline" size={13} color={palette.mutedText} /></Text><View style={styles.levelRow}><Text style={[styles.levelPill, { backgroundColor: palette.primary }]}>♀ 18</Text><Text style={[styles.levelPill, { backgroundColor: palette.purple }]}>Level 1</Text></View></View><PillButton label="Edit Self" icon="person" onPress={() => onNavigate('setup')} palette={palette} small /></View>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 90 + insets.bottom }}>
+        <View style={[styles.profileTop, { paddingTop: insets.top + 8 }]}><Pressable onPress={() => onNavigate('home')} style={styles.iconButton}><Icon name="chevron-back" size={25} color={palette.foreground} /></Pressable><Text style={[styles.headerTitle, { color: palette.foreground }]}>My Profile</Text></View>
+        <View style={styles.profileIdentity}>
+          {/* Avatar with active frame ring */}
+          <View style={{ position: 'relative' }}>
+            <Avatar uri={user?.avatarUrl || avatarImages[0]} size={98} ring={!!activeFrame} />
+            {activeFrame ? (
+              <View style={{ position: 'absolute', bottom: -4, right: -4, backgroundColor: palette.gold, borderRadius: 12, paddingHorizontal: 4, paddingVertical: 2 }}>
+                <Icon name="layers" size={12} color="#000" />
+              </View>
+            ) : null}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.profileName, { color: palette.foreground }]}>{user?.displayName || user?.username || 'User'}</Text>
+            <Text style={[styles.profileId, { color: palette.mutedText }]}>@{user?.username || 'user'}  <Icon name="copy-outline" size={13} color={palette.mutedText} /></Text>
+            <View style={styles.levelRow}>
+              <Text style={[styles.levelPill, { backgroundColor: palette.primary }]}>{genderSymbol} {age}</Text>
+              {/* Real level badge - tappable to open levels screen */}
+              <Pressable onPress={() => router.push('/levels')} style={[styles.levelPill, { backgroundColor: palette.purple, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                {levelBadgeUrl ? (
+                  <Image source={{ uri: levelBadgeUrl }} style={{ width: 16, height: 16, borderRadius: 8 }} />
+                ) : (
+                  <Icon name="shield" size={12} color="#fff" />
+                )}
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>Lv.{realLevel}</Text>
+                <Icon name="chevron-forward" size={10} color="rgba(255,255,255,0.7)" />
+              </Pressable>
+            </View>
+          </View>
+          <PillButton label="Edit Self" icon="person" onPress={() => onNavigate('setup')} palette={palette} small />
+        </View>
         <View style={[styles.stats, { backgroundColor: palette.card, borderColor: palette.border }]}>{[['0', 'Following'], ['0', 'Fans'], ['0', 'Blocked User']].map(([value, label]) => <View key={label} style={styles.stat}><Text style={[styles.statValue, { color: palette.foreground }]}>{value}</Text><Text style={[styles.statLabel, { color: palette.mutedText }]}>{label}</Text></View>)}</View>
-        <Pressable onPress={() => onNavigate('wallet')} style={styles.diamondCard}><LinearGradient colors={[palette.purple, palette.pink]} style={StyleSheet.absoluteFillObject} /><View style={styles.diamondIcon}><Icon name="diamond" size={40} color={palette.gold} /></View><View><Text style={styles.diamondLabel}>My Diamonds</Text><Text style={styles.diamondAmount}>20K</Text></View><View style={styles.walletButton}><Text style={styles.walletButtonText}>My Wallet</Text><Icon name="chevron-forward" size={15} color={palette.primary} /></View></Pressable>
-        <FeatureSection title="Host & VIP Privilege" palette={palette} items={[['Demo Agency', 'briefcase', 'multi'], ['Demo Host Center', 'person-circle', 'setup'], ['Host Request', 'ribbon', 'room'], ['Become VIP', 'people', 'store']]} onNavigate={onNavigate} />
-        <FeatureSection title="My Features" palette={palette} items={[['Offline Recharge', 'cash', 'wallet'], ['My Posts', 'images', 'feed'], ['My Relites', 'play-circle', 'feed'], ['Store', 'bag-handle', 'store'], ['Top Givers', 'trophy', 'ranking'], ['Free Diamonds', 'diamond', 'free']]} onNavigate={onNavigate} />
-        <Pressable onPress={() => onNavigate('auth')} style={[styles.signOut, { borderColor: palette.border }]}><Icon name="log-out-outline" size={18} color={palette.primary} /><Text style={[styles.signOutText, { color: palette.primary }]}>Preview sign in screens</Text></Pressable>
+        <Pressable onPress={() => onNavigate('wallet')} style={[styles.diamondCard, { paddingVertical: 14 }]}>
+          <LinearGradient colors={[palette.purple, palette.pink]} style={StyleSheet.absoluteFillObject} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingHorizontal: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={styles.diamondIcon}><Icon name="wallet" size={26} color={palette.gold} /></View>
+              <View>
+                <Text style={styles.diamondLabel}>Coins</Text>
+                <Text style={styles.diamondAmount}>{coinsDisplay}</Text>
+              </View>
+            </View>
+            <View style={{ width: 1, height: 36, backgroundColor: 'rgba(255,255,255,0.2)' }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={[styles.diamondIcon, { backgroundColor: 'rgba(92,213,247,0.25)' }]}><Icon name="diamond" size={26} color="#58d5f7" /></View>
+              <View>
+                <Text style={styles.diamondLabel}>Diamonds</Text>
+                <Text style={[styles.diamondAmount, { color: '#58d5f7' }]}>{diamondsDisplay}</Text>
+              </View>
+            </View>
+            <View style={styles.walletButton}>
+              <Text style={styles.walletButtonText}>Wallet</Text>
+              <Icon name="chevron-forward" size={14} color={palette.primary} />
+            </View>
+          </View>
+        </Pressable>
+        <FeatureSection title="Host & VIP Privilege" palette={palette} items={[['My Agency', icons3d.crown, 'multi'], ['Host Center', icons3d.badge, 'setup'], ['CP List', icons3d.heart, 'room'], ['Become VIP', icons3d.crown, 'store']]} onNavigate={onNavigate} />
+        <FeatureSection title="My Features" palette={palette} items={[['My Wallet', icons3d.wallet, 'wallet'], ['Chat Price', icons3d.chat, 'messages'], ['Daily Tasks', icons3d.tasks, 'feed'], ['Store', icons3d.mall, 'store'], ['Top Givers', icons3d.trophy, 'ranking'], ['Settings', icons3d.settings, 'setup']]} onNavigate={onNavigate} />
+        <Pressable onPress={handleSignOut} style={[styles.signOut, { borderColor: palette.border }]}><Icon name="log-out-outline" size={18} color={palette.primary} /><Text style={[styles.signOutText, { color: palette.primary }]}>Sign Out</Text></Pressable>
       </ScrollView>
     </View>
   );
 }
 
-function FeatureSection({ title, items, palette, onNavigate }: { title: string; items: [string, IconName, Screen][]; palette: ThemeColors; onNavigate: (screen: Screen) => void }) {
+function FeatureSection({ title, items, palette, onNavigate }: { title: string; items: [string, any, Screen][]; palette: ThemeColors; onNavigate: (screen: Screen) => void }) {
   return (
-    <View style={[styles.featureSection, { backgroundColor: palette.card, borderColor: palette.border }]}><Text style={[styles.featureTitle, { color: palette.foreground }]}>{title}</Text><View style={styles.featureGrid}>{items.map(([label, icon, screen]) => <Pressable key={label} onPress={() => onNavigate(screen)} style={styles.featureItem}><View style={[styles.featureIcon, { backgroundColor: palette.secondary, borderColor: palette.border }]}><Icon name={icon} size={23} color={palette.primary} /></View><Text style={[styles.featureLabel, { color: palette.mutedText }]}>{label}</Text></Pressable>)}</View></View>
+    <View style={[styles.featureSection, { backgroundColor: palette.card, borderColor: palette.border }]}><Text style={[styles.featureTitle, { color: palette.foreground }]}>{title}</Text><View style={styles.featureGrid}>{items.map(([label, iconSource, screen]) => <Pressable key={label} onPress={() => onNavigate(screen)} style={styles.featureItem}>
+      {typeof iconSource === 'string' ? <View style={[styles.featureIcon, { backgroundColor: palette.secondary, borderColor: palette.border }]}><Icon name={iconSource as IconName} size={23} color={palette.primary} /></View> : <Image source={iconSource} style={{ width: 44, height: 44, marginBottom: 6, borderRadius: 12 }} />}
+      <Text style={[styles.featureLabel, { color: palette.mutedText }]}>{label}</Text></Pressable>)}</View></View>
   );
 }
 
@@ -322,7 +513,7 @@ export function MessagesScreen({ palette, onOpenChat }: { palette: ThemeColors; 
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 112 }}>
-        <View style={styles.messageHeader}><Text style={[styles.pageTitle, { color: palette.primary }]}>Messages</Text><View style={styles.topActions}><Pressable style={[styles.roundAction, { backgroundColor: palette.secondary }]}><Icon name="trash" size={18} color={palette.primary} /></Pressable><Avatar uri={avatarImages[0]} size={36} ring /></View></View>
+        <View style={styles.messageHeader}><Text style={[styles.pageTitle, { color: palette.primary }]}>Messages</Text><View style={styles.topActions}><Pressable style={[styles.roundAction, { backgroundColor: palette.secondary }]}><Icon name="trash" size={18} color={palette.primary} /></Pressable></View></View>
         {conversations.map((conversation) => <Pressable key={conversation.id} onPress={() => onOpenChat(conversation.id)} style={({ pressed }) => [styles.conversation, { backgroundColor: palette.card }, pressed && styles.pressed]}><Avatar uri={conversation.image} size={48} ring /><View style={{ flex: 1 }}><Text style={[styles.conversationName, { color: palette.foreground }]}>{conversation.name} <Text style={{ color: palette.gold }}>{conversation.country === 'IN' ? '●' : '✦'}</Text></Text><Text style={[styles.conversationMessage, { color: palette.mutedText }]} numberOfLines={1}>{conversation.message}</Text></View><View style={styles.conversationRight}>{conversation.unread && !readConversationIds.includes(conversation.id) ? <View style={[styles.unread, { backgroundColor: palette.primary }]}><Text style={styles.unreadText}>{conversation.unread}</Text></View> : null}<Text style={[styles.conversationTime, { color: palette.mutedText }]}>{conversation.time}</Text></View></Pressable>)}
       </ScrollView>
     </View>
@@ -330,19 +521,124 @@ export function MessagesScreen({ palette, onOpenChat }: { palette: ThemeColors; 
 }
 
 export function WalletScreen({ palette, onBack, onNavigate }: { palette: ThemeColors; onBack: () => void; onNavigate: (screen: Screen) => void }) {
-  const coins = useStreamStore((state) => state.coins);
-  const recharge = useStreamStore((state) => state.recharge);
+  const coins = useStreamStore((state: any) => state.coins);
+  const diamonds = useStreamStore((state: any) => state.diamonds);
+  const setBalances = useStreamStore((state: any) => state.setBalances);
+  const [loading, setLoading] = useState(false);
+
+  const handleRecharge = (amount: number, priceStr: string) => {
+    Alert.alert(
+      'Recharge Coins',
+      `Would you like to purchase ${amount.toLocaleString()} coins for ${priceStr}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm Recharge',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              const res = await rechargeCoins(amount, priceStr);
+              if (res && res.success) {
+                setBalances({ coins: res.coins, diamonds: res.diamonds });
+                Alert.alert('Recharge Successful', `Added ${amount.toLocaleString()} coins to your balance!`);
+              }
+            } catch (err: any) {
+              console.error('Recharge failed', err);
+              Alert.alert('Recharge Failed', err.response?.data?.message || 'Could not complete recharge. Please try again.');
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
       <Header title="My Wallet" palette={palette} onBack={onBack} right={<PillButton label="History" icon="receipt" onPress={() => {}} palette={palette} small />} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 112 }}>
-        <LinearGradient colors={[palette.purple, palette.pink]} style={styles.balanceCard}><View style={styles.balanceGem}><Icon name="diamond" size={50} color={palette.gold} /></View><View><Text style={styles.balanceLabel}>My Diamond Coin</Text><Text style={styles.balanceValue}>{coins.toLocaleString()}</Text></View></LinearGradient>
-        <View style={styles.walletActions}><PillButton label="Offline Recharge" icon="diamond" onPress={() => recharge(100)} palette={palette} /><PillButton label="My Income" icon="trending-up" onPress={() => onNavigate('income')} palette={palette} filled={false} /></View>
-        <LinearGradient colors={['#552a3f', '#ee6e16']} style={styles.planCard}><View style={styles.bestPlan}><Text style={styles.bestPlanText}>BEST PLAN</Text></View><Icon name="diamond" size={38} color={palette.gold} /><View style={{ flex: 1 }}><Text style={styles.planEyebrow}>Best Recharge Plan</Text><Text style={styles.planValue}>X 100</Text></View><View style={styles.planPrice}><Text style={styles.planPriceText}>$ 120.00</Text></View><Pressable onPress={() => recharge(1200)} style={styles.planFooter}><Text style={styles.planFooterText}>Purchase Recharge Plan</Text><Icon name="chevron-forward" size={18} color="#fff" /></Pressable></LinearGradient>
-        <SectionTitle title="Best Recharge Plan" palette={palette} />
-        <View style={styles.coinGrid}>{coinPackages.map((item) => <Pressable key={item.coins} onPress={() => recharge(Number(item.coins.replace(',', '')))} style={[styles.coinPackage, { backgroundColor: palette.card, borderColor: palette.border }]}>{item.popular ? <View style={[styles.popularTag, { backgroundColor: palette.gold }]}><Text style={styles.popularTagText}>POPULAR</Text></View> : null}<Icon name="diamond" size={28} color={palette.gold} /><Text style={[styles.coinAmount, { color: palette.gold }]}>{item.coins}</Text><View style={[styles.coinPrice, { backgroundColor: palette.primary }]}><Text style={styles.coinPriceText}>{item.price}</Text></View></Pressable>)}</View>
+        <LinearGradient colors={[palette.purple, palette.pink]} style={[styles.balanceCard, { paddingVertical: 18 }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={styles.balanceGem}><Icon name="wallet" size={32} color={palette.gold} /></View>
+              <View>
+                <Text style={styles.balanceLabel}>Gold Coins</Text>
+                <Text style={styles.balanceValue}>{coins.toLocaleString()}</Text>
+              </View>
+            </View>
+            <View style={{ width: 1, height: 40, backgroundColor: 'rgba(255,255,255,0.25)' }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={[styles.balanceGem, { backgroundColor: 'rgba(92,213,247,0.25)' }]}><Icon name="diamond" size={32} color="#58d5f7" /></View>
+              <View>
+                <Text style={styles.balanceLabel}>Diamonds</Text>
+                <Text style={[styles.balanceValue, { color: '#58d5f7' }]}>{diamonds.toLocaleString()}</Text>
+              </View>
+            </View>
+          </View>
+        </LinearGradient>
+
+        <View style={styles.walletActions}>
+          <PillButton label={loading ? 'Processing...' : 'Quick Recharge'} icon="diamond" onPress={() => handleRecharge(500, '$5.00')} palette={palette} />
+          <PillButton label="My Income" icon="trending-up" onPress={() => onNavigate('income')} palette={palette} filled={false} />
+        </View>
+
+        <LinearGradient colors={['#552a3f', '#ee6e16']} style={styles.planCard}>
+          <View style={styles.bestPlan}><Text style={styles.bestPlanText}>BEST VALUE</Text></View>
+          <Icon name="diamond" size={38} color={palette.gold} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.planEyebrow}>Mega Recharge Pack</Text>
+            <Text style={styles.planValue}>+ 5,000 Coins</Text>
+          </View>
+          <View style={styles.planPrice}><Text style={styles.planPriceText}>$ 49.99</Text></View>
+          <Pressable onPress={() => handleRecharge(5000, '$49.99')} style={styles.planFooter}>
+            <Text style={styles.planFooterText}>Purchase Recharge Plan</Text>
+            <Icon name="chevron-forward" size={18} color="#fff" />
+          </Pressable>
+        </LinearGradient>
+
+        <SectionTitle title="Recharge Packages" palette={palette} />
+        <View style={styles.coinGrid}>
+          {coinPackages.map((item) => {
+            const coinNum = Number(item.coins.replace(/,/g, ''));
+            return (
+              <Pressable
+                key={item.coins}
+                onPress={() => handleRecharge(coinNum, item.price)}
+                style={({ pressed }: { pressed: boolean }) => [
+                  styles.coinPackage,
+                  { backgroundColor: palette.card, borderColor: palette.border },
+                  pressed && styles.pressed,
+                ]}
+              >
+                {item.popular ? (
+                  <View style={[styles.popularTag, { backgroundColor: palette.gold }]}>
+                    <Text style={styles.popularTagText}>POPULAR</Text>
+                  </View>
+                ) : null}
+                <Icon name="diamond" size={28} color={palette.gold} />
+                <Text style={[styles.coinAmount, { color: palette.gold }]}>{item.coins}</Text>
+                <View style={[styles.coinPrice, { backgroundColor: palette.primary }]}>
+                  <Text style={styles.coinPriceText}>{item.price}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+
         <SectionTitle title="Recent activity" action="All" onAction={() => {}} palette={palette} />
-        {historyItems.map((item) => <View key={item.label} style={[styles.historyItem, { borderBottomColor: palette.border }]}><View style={[styles.historyIcon, { backgroundColor: palette.secondary }]}><Icon name={item.type === 'in' ? 'arrow-down' : 'arrow-up'} size={17} color={item.type === 'in' ? palette.success : palette.primary} /></View><View style={{ flex: 1 }}><Text style={[styles.historyLabel, { color: palette.foreground }]}>{item.label}</Text><Text style={[styles.historyDetail, { color: palette.mutedText }]}>{item.detail}</Text></View><Text style={[styles.historyAmount, { color: item.type === 'in' ? palette.success : palette.primary }]}>{item.amount}</Text></View>)}
+        {historyItems.map((item) => (
+          <View key={item.label} style={[styles.historyItem, { borderBottomColor: palette.border }]}>
+            <View style={[styles.historyIcon, { backgroundColor: palette.secondary }]}>
+              <Icon name={item.type === 'in' ? 'arrow-down' : 'arrow-up'} size={17} color={item.type === 'in' ? palette.success : palette.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.historyLabel, { color: palette.foreground }]}>{item.label}</Text>
+              <Text style={[styles.historyDetail, { color: palette.mutedText }]}>{item.detail}</Text>
+            </View>
+            <Text style={[styles.historyAmount, { color: item.type === 'in' ? palette.success : palette.primary }]}>{item.amount}</Text>
+          </View>
+        ))}
       </ScrollView>
     </View>
   );
@@ -350,29 +646,439 @@ export function WalletScreen({ palette, onBack, onNavigate }: { palette: ThemeCo
 
 export function IncomeScreen({ palette, onBack }: { palette: ThemeColors; onBack: () => void }) {
   const diamonds = useStreamStore((state) => state.diamonds);
-  const [amount, setAmount] = useState('21500');
+  const setBalances = useStreamStore((state) => state.setBalances);
+  const [amount, setAmount] = useState('100');
   const [status, setStatus] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleConvert = async () => {
+    const num = parseInt(amount, 10);
+    if (isNaN(num) || num <= 0) {
+      setStatus('Please enter a valid amount of diamonds');
+      return;
+    }
+    if (num > diamonds) {
+      setStatus('Insufficient diamonds balance');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const res = await convertDiamonds(num);
+      if (res && res.success) {
+        setBalances({ coins: res.coins, diamonds: res.diamonds });
+        setStatus(`Successfully converted ${num} diamonds to ${num * 10} coins!`);
+      }
+    } catch (e: any) {
+      setStatus(e.response?.data?.message || 'Conversion failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
       <Header title="My Income" palette={palette} onBack={onBack} right={<PillButton label="History" icon="receipt" onPress={() => {}} palette={palette} small />} />
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 112 }}>
-        <LinearGradient colors={[palette.purple, '#5b23b7']} style={styles.incomeCard}><View><Text style={styles.balanceLabel}>Available My R-Coins :</Text><Text style={styles.incomeValue}>{diamonds.toLocaleString()}</Text><View style={styles.conversion}><Text style={styles.conversionText}>100 R-Coins  =  10 Diamonds</Text></View></View><View style={styles.rCoin}><Text style={styles.rCoinText}>R</Text></View></LinearGradient>
-        <Text style={[styles.formLabel, { color: palette.foreground }]}>Withdraw R-Coin :</Text><View style={[styles.withdrawInput, { borderColor: palette.border, backgroundColor: palette.card }]}><TextInput value={amount} onChangeText={setAmount} keyboardType="number-pad" placeholder="Enter withdrawing coins" placeholderTextColor={palette.mutedForeground} style={[styles.withdrawText, { color: palette.foreground }]} /><Text style={[styles.withdrawAmount, { color: palette.foreground }]}>{amount}</Text></View><Text style={[styles.helperText, { color: palette.primary }]}>*Maximum Withdraw : 1200</Text><Pressable onPress={() => setStatus('Conversion request queued for review')} style={[styles.fullButton, { backgroundColor: palette.destructive }]}><Text style={styles.fullButtonText}>Convert to Diamond</Text></Pressable><Pressable onPress={() => setStatus('Cash out is available in the production wallet')} style={[styles.fullButton, { backgroundColor: palette.card }]}><Text style={[styles.fullButtonText, { color: palette.foreground }]}>Cash Out</Text></Pressable>{status ? <Text style={[styles.statusText, { color: palette.success }]}>{status}</Text> : null}<Text style={[styles.formLabel, { color: palette.foreground, marginTop: 28 }]}>What is R-Coin?</Text><Text style={[styles.explanation, { color: palette.mutedText }]}>1. When you receive gifts on StreamZone, you immediately earn the same amount of R-Coin as the gift’s value.{'\n\n'}2. You can convert R-Coin to diamonds and cash.{'\n\n'}3. Your R-Coin balance is always available to withdraw.</Text>
+        <LinearGradient colors={[palette.purple, '#5b23b7']} style={styles.incomeCard}>
+          <View>
+            <Text style={styles.balanceLabel}>Available Diamonds (R-Coins) :</Text>
+            <Text style={styles.incomeValue}>{diamonds.toLocaleString()}</Text>
+            <View style={styles.conversion}>
+              <Text style={styles.conversionText}>10 Diamonds  =  100 Coins</Text>
+            </View>
+          </View>
+          <View style={styles.rCoin}><Text style={styles.rCoinText}>R</Text></View>
+        </LinearGradient>
+        <Text style={[styles.formLabel, { color: palette.foreground }]}>Convert Diamonds to Coins :</Text>
+        <View style={[styles.withdrawInput, { borderColor: palette.border, backgroundColor: palette.card }]}>
+          <TextInput
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="number-pad"
+            placeholder="Enter diamonds to convert"
+            placeholderTextColor={palette.mutedForeground}
+            style={[styles.withdrawText, { color: palette.foreground }]}
+          />
+          <Text style={[styles.withdrawAmount, { color: palette.foreground }]}>{amount}</Text>
+        </View>
+        <Text style={[styles.helperText, { color: palette.primary }]}>* You will receive {parseInt(amount || '0', 10) * 10} coins</Text>
+        <Pressable
+          onPress={handleConvert}
+          disabled={loading}
+          style={[styles.fullButton, { backgroundColor: palette.primary }]}
+        >
+          <Text style={styles.fullButtonText}>{loading ? 'Converting...' : 'Convert to Coins'}</Text>
+        </Pressable>
+        <Pressable onPress={() => setStatus('Cash out is available in the production wallet')} style={[styles.fullButton, { backgroundColor: palette.card }]}>
+          <Text style={[styles.fullButtonText, { color: palette.foreground }]}>Cash Out</Text>
+        </Pressable>
+        {status ? <Text style={[styles.statusText, { color: palette.success }]}>{status}</Text> : null}
+        <Text style={[styles.formLabel, { color: palette.foreground, marginTop: 28 }]}>What is R-Coin?</Text>
+        <Text style={[styles.explanation, { color: palette.mutedText }]}>
+          1. When you receive gifts on StreamZone as a host or in private chat, you earn diamonds.{'\n\n'}
+          2. You can convert diamonds directly to coins to gift others or use in the store.{'\n\n'}
+          3. Verified hosts can cash out diamonds to real currency.
+        </Text>
       </ScrollView>
     </View>
   );
 }
 
 export function StoreScreen({ palette, onBack }: { palette: ThemeColors; onBack: () => void }) {
-  const items = [['Audi A4', 'https://images.unsplash.com/photo-1542282088-fe8426682b8f?auto=format&fit=crop&w=500&q=80', '12,400'], ['Qbic DC', 'https://images.unsplash.com/photo-1553440569-bcc63803a83d?auto=format&fit=crop&w=500&q=80', '13,500'], ['Mustang', 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=500&q=80', '14,500'], ['Mercedes AMG', 'https://images.unsplash.com/photo-1618843479313-40f8afb4b4bd?auto=format&fit=crop&w=500&q=80', '15,500'], ['Mercedes Benz', 'https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=500&q=80', '14,500'], ['Roadster', 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?auto=format&fit=crop&w=500&q=80', '15,500']] as const;
-  const [tab, setTab] = useState('Admission Car');
-  const [purchased, setPurchased] = useState<string | null>(null);
+  type StoreTab = 'Frames' | 'Entry Effects' | 'Chat Bubbles';
+  const TABS: StoreTab[] = ['Entry Effects', 'Frames', 'Chat Bubbles'];
+  const TAB_TYPE_MAP: Record<StoreTab, string> = {
+    'Entry Effects': 'entry_effect',
+    'Frames': 'frame',
+    'Chat Bubbles': 'chat_bubble',
+  };
+
+  const [items, setItems] = useState<any[]>([]);
+  const [tab, setTab] = useState<StoreTab>('Entry Effects');
+  const [inventory, setInventory] = useState<any[]>([]);
+  const [activeFrame, setActiveFrame] = useState<string | null>(null);
+  const [activeEntryEffect, setActiveEntryEffect] = useState<string | null>(null);
+  const [activeChatBubble, setActiveChatBubble] = useState<string | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const { user } = useAuth();
+  const coins = useStreamStore((state: any) => state.coins);
+  const setBalances = useStreamStore((state: any) => state.setBalances);
+
+  useEffect(() => {
+    // Fetch store items
+    getStoreItems()
+      .then((serverItems: any) => {
+        if (serverItems && serverItems.length > 0) setItems(serverItems);
+      })
+      .catch(console.error);
+
+    // Fetch user progress (inventory + equipped items)
+    getMyProgress()
+      .then((progress) => {
+        setInventory(progress.inventory || []);
+      })
+      .catch(console.error);
+
+    // Load equipped items from user object
+    if (user) {
+      setActiveFrame((user as any).activeFrame || null);
+      setActiveEntryEffect((user as any).activeEntryEffect || null);
+      setActiveChatBubble((user as any).activeChatBubble || null);
+    }
+  }, []);
+
+  const filteredItems = items.filter((item: any) => item.type === TAB_TYPE_MAP[tab]);
+
+  const isOwned = (itemId: string) => inventory.some((inv) => inv.itemId === itemId);
+
+  const getEquippedId = () => {
+    if (tab === 'Frames') return activeFrame;
+    if (tab === 'Entry Effects') return activeEntryEffect;
+    return activeChatBubble;
+  };
+
+  const handleBuy = async (item: any) => {
+    if (coins < item.price) {
+      Alert.alert('Insufficient Balance', `You need ${item.price.toLocaleString()} coins.\nYour balance: ${coins.toLocaleString()} coins.`);
+      return;
+    }
+    Alert.alert(
+      'Confirm Purchase',
+      `Purchase "${item.name}" for ${item.price.toLocaleString()} coins (${item.durationDays || 30} days)?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Purchase',
+          onPress: async () => {
+            setLoadingId(item._id);
+            try {
+              const res = await buyStoreItem(item._id);
+              setBalances({ coins: res.coins });
+              setInventory(res.inventory || []);
+              Alert.alert('🎉 Item Purchased!', `"${item.name}" has been added to your inventory. Equip it now!`);
+            } catch (err: any) {
+              Alert.alert('Purchase Failed', err.response?.data?.message || 'Could not complete purchase.');
+            } finally {
+              setLoadingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleEquip = async (item: any) => {
+    setLoadingId(item._id);
+    try {
+      await equipStoreItem(item._id);
+      if (item.type === 'frame') setActiveFrame(item._id);
+      else if (item.type === 'entry_effect') setActiveEntryEffect(item._id);
+      else setActiveChatBubble(item._id);
+      Alert.alert('✅ Equipped!', `"${item.name}" is now equipped.`);
+    } catch (err: any) {
+      Alert.alert('Failed', err.response?.data?.message || 'Could not equip item.');
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  const handleUnequip = async (item: any) => {
+    setLoadingId(item._id);
+    try {
+      const typeMap: any = { frame: 'frame', entry_effect: 'entry_effect', chat_bubble: 'chat_bubble' };
+      await unequipStoreItem(typeMap[item.type]);
+      if (item.type === 'frame') setActiveFrame(null);
+      else if (item.type === 'entry_effect') setActiveEntryEffect(null);
+      else setActiveChatBubble(null);
+    } catch (err: any) {
+      Alert.alert('Failed', err.response?.data?.message || 'Could not unequip item.');
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  const equippedId = getEquippedId();
+
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
-      <Header title="My Store" palette={palette} onBack={onBack} />
+      <Header
+        title="My Store"
+        palette={palette}
+        onBack={onBack}
+        right={
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Icon name="wallet" size={16} color={palette.gold} />
+            <Text style={{ color: palette.gold, fontWeight: '700', fontSize: 13 }}>{coins.toLocaleString()}</Text>
+          </View>
+        }
+      />
+      {/* Tab bar */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxHeight: 50 }} contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8, gap: 8 }}>
+        {TABS.map((t) => (
+          <Pressable
+            key={t}
+            onPress={() => setTab(t)}
+            style={[styles.segment, { paddingHorizontal: 14, paddingVertical: 7 }, tab === t && { backgroundColor: palette.primary }]}
+          >
+            <Text style={[styles.segmentText, { color: tab === t ? '#fff' : palette.mutedText }]}>{t}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 112 }}>
-        <View style={[styles.segmented, { backgroundColor: palette.secondary }]}>{['Admission Car', 'Avatar Frame'].map((item) => <Pressable key={item} onPress={() => setTab(item)} style={[styles.segment, tab === item && { backgroundColor: palette.primary }]}><Text style={[styles.segmentText, { color: tab === item ? '#fff' : palette.mutedText }]}>{item}</Text></Pressable>)}</View>
-        <View style={styles.storeGrid}>{items.map(([name, image, price]) => <View key={name} style={[styles.storeItem, { backgroundColor: palette.card }]}><Image source={{ uri: image }} style={styles.carImage} resizeMode="contain" /><Text style={[styles.storeName, { color: palette.foreground }]}>{name}</Text><Text style={[styles.storePrice, { color: palette.gold }]}><Icon name="diamond" size={12} color={palette.gold} /> {price}/15day</Text><Pressable onPress={() => setPurchased(name)} style={[styles.purchaseButton, { backgroundColor: palette.primary }]}><Text style={styles.purchaseText}>{purchased === name ? 'Owned' : 'Purchase'}</Text></Pressable></View>)}</View>
+        {items.length === 0 && (
+          <View style={{ alignItems: 'center', marginTop: 60 }}>
+            <ActivityIndicator color={palette.primary} size="large" />
+            <Text style={{ color: palette.mutedText, marginTop: 12 }}>Loading store items...</Text>
+          </View>
+        )}
+        <View style={styles.storeGrid}>
+          {filteredItems.map((item: any) => {
+            const owned = isOwned(item._id);
+            const equipped = equippedId === item._id;
+            const isLoading = loadingId === item._id;
+
+            return (
+              <View key={item._id} style={[styles.storeItem, { backgroundColor: palette.card, borderWidth: equipped ? 2 : 0, borderColor: palette.primary }]}>
+                {equipped && (
+                  <View style={{ position: 'absolute', top: 6, left: 6, zIndex: 1, backgroundColor: palette.primary, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 }}>
+                    <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>EQUIPPED</Text>
+                  </View>
+                )}
+                <Image source={{ uri: item.imageUrl }} style={styles.carImage} resizeMode="contain" />
+                <Text style={[styles.storeName, { color: palette.foreground }]} numberOfLines={1}>{item.name}</Text>
+                <Text style={[styles.storePrice, { color: palette.gold }]}>
+                  <Icon name="diamond" size={12} color={palette.gold} /> {item.price.toLocaleString()}/{item.durationDays || 30}d
+                </Text>
+
+                {isLoading ? (
+                  <View style={[styles.purchaseButton, { backgroundColor: palette.secondary }]}>
+                    <ActivityIndicator size="small" color={palette.primary} />
+                  </View>
+                ) : !owned ? (
+                  <Pressable onPress={() => handleBuy(item)} style={[styles.purchaseButton, { backgroundColor: palette.primary }]}>
+                    <Text style={styles.purchaseText}>Buy</Text>
+                  </Pressable>
+                ) : equipped ? (
+                  <Pressable onPress={() => handleUnequip(item)} style={[styles.purchaseButton, { backgroundColor: palette.secondary }]}>
+                    <Text style={[styles.purchaseText, { color: palette.foreground }]}>Unequip</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable onPress={() => handleEquip(item)} style={[styles.purchaseButton, { backgroundColor: palette.success }]}>
+                    <Text style={styles.purchaseText}>Equip</Text>
+                  </Pressable>
+                )}
+              </View>
+            );
+          })}
+          {filteredItems.length === 0 && items.length > 0 && (
+            <Text style={{ color: palette.mutedText, textAlign: 'center', width: '100%', marginTop: 40 }}>
+              No {tab} available yet.
+            </Text>
+          )}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+export function LevelsScreen({ palette, onBack }: { palette: ThemeColors; onBack: () => void }) {
+  const { user } = useAuth();
+  const [levels, setLevels] = useState<any[]>([]);
+  const [progress, setProgress] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    Promise.all([
+      getLevels().catch(() => []),
+      getMyProgress().catch(() => null),
+    ]).then(([lvls, prog]) => {
+      setLevels(lvls || []);
+      setProgress(prog);
+      setLoading(false);
+    });
+  }, []);
+
+  const currentLevel = progress?.currentLevel;
+  const nextLevel = progress?.nextLevel;
+  const progressPercent = progress?.progressPercent ?? 0;
+  const xpToNext = progress?.xpToNextLevel ?? 0;
+  const currentXP = progress?.xp ?? 0;
+
+  const TIER_COLORS: Record<number, string> = {
+    1: '#9E9E9E', 2: '#9E9E9E', 3: '#9E9E9E', 4: '#9E9E9E', 5: '#9E9E9E',
+    6: '#4CAF50', 7: '#4CAF50', 8: '#4CAF50', 9: '#4CAF50', 10: '#4CAF50',
+    11: '#2196F3', 12: '#2196F3', 13: '#2196F3', 14: '#2196F3', 15: '#2196F3',
+    16: '#9C27B0', 17: '#9C27B0', 18: '#9C27B0', 19: '#9C27B0', 20: '#9C27B0',
+    21: '#FF9800', 22: '#FF9800', 23: '#FF9800', 24: '#FF9800', 25: '#FF9800',
+    26: '#F44336', 27: '#F44336', 28: '#F44336', 29: '#F44336', 30: '#FFD700',
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: palette.background }}>
+      <Header title="My Levels" palette={palette} onBack={onBack} />
+      <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+        {loading ? (
+          <View style={{ alignItems: 'center', marginTop: 80 }}>
+            <ActivityIndicator size="large" color={palette.primary} />
+            <Text style={{ color: palette.mutedText, marginTop: 12 }}>Loading your progress...</Text>
+          </View>
+        ) : (
+          <>
+            {/* Current Level Card */}
+            <LinearGradient
+              colors={[currentLevel?.color || palette.purple, palette.pink]}
+              style={{ margin: 16, borderRadius: 20, padding: 24, alignItems: 'center' }}
+            >
+              {/* Badge */}
+              {currentLevel?.badgeUrl ? (
+                <Image source={{ uri: currentLevel.badgeUrl }} style={{ width: 80, height: 80, borderRadius: 40, marginBottom: 12 }} />
+              ) : (
+                <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                  <Text style={{ fontSize: 32 }}>{currentLevel?.emoji || '⭐'}</Text>
+                </View>
+              )}
+              <Text style={{ color: '#fff', fontSize: 28, fontWeight: '800' }}>Level {currentLevel?.level || 1}</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 16, marginBottom: 16 }}>{currentLevel?.name || 'Seedling 🌱'}</Text>
+
+              {/* XP Progress Bar */}
+              <View style={{ width: '100%', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8, height: 10, marginBottom: 8, overflow: 'hidden' }}>
+                <View style={{ width: `${progressPercent}%`, height: '100%', backgroundColor: '#fff', borderRadius: 8 }} />
+              </View>
+              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13 }}>
+                {currentXP.toLocaleString()} XP  •  {xpToNext.toLocaleString()} XP to next level
+              </Text>
+              {nextLevel && (
+                <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12, marginTop: 4 }}>
+                  Next: {nextLevel.name} (Level {nextLevel.level})
+                </Text>
+              )}
+            </LinearGradient>
+
+            {/* Level Journey */}
+            <View style={{ paddingHorizontal: 16 }}>
+              <Text style={{ color: palette.foreground, fontSize: 17, fontWeight: '700', marginBottom: 12 }}>Level Roadmap</Text>
+              {levels.map((lvl: any) => {
+                const isCurrentLevel = currentLevel?.level === lvl.level;
+                const isPassed = (currentLevel?.level || 0) > lvl.level;
+                const tierColor = lvl.color || TIER_COLORS[lvl.level] || palette.primary;
+
+                return (
+                  <View
+                    key={lvl._id || lvl.level}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      marginBottom: 10,
+                      padding: 12,
+                      borderRadius: 14,
+                      backgroundColor: isCurrentLevel ? `${tierColor}22` : palette.card,
+                      borderWidth: isCurrentLevel ? 2 : 0,
+                      borderColor: tierColor,
+                      opacity: !isPassed && !isCurrentLevel && (currentLevel?.level || 0) < lvl.level ? 0.65 : 1,
+                    }}
+                  >
+                    {/* Badge/Number */}
+                    <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: isPassed || isCurrentLevel ? tierColor : palette.secondary, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                      {lvl.badgeUrl ? (
+                        <Image source={{ uri: lvl.badgeUrl }} style={{ width: 36, height: 36, borderRadius: 18 }} />
+                      ) : (
+                        <Text style={{ fontSize: isPassed ? 14 : 16 }}>{isPassed ? '✓' : lvl.emoji || '⭐'}</Text>
+                      )}
+                    </View>
+
+                    {/* Level Info */}
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: palette.foreground, fontWeight: '700', fontSize: 14 }}>
+                        Level {lvl.level}  <Text style={{ color: tierColor }}>{lvl.name}</Text>
+                      </Text>
+                      <Text style={{ color: palette.mutedText, fontSize: 12 }}>{lvl.minXP.toLocaleString()} XP required</Text>
+
+                      {/* Rewards */}
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                        {lvl.rewardCoins > 0 && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                            <Icon name="wallet" size={11} color={palette.gold} />
+                            <Text style={{ color: palette.gold, fontSize: 11, fontWeight: '600' }}>{lvl.rewardCoins}</Text>
+                          </View>
+                        )}
+                        {lvl.rewardDiamonds > 0 && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                            <Icon name="diamond" size={11} color="#58d5f7" />
+                            <Text style={{ color: '#58d5f7', fontSize: 11, fontWeight: '600' }}>{lvl.rewardDiamonds}</Text>
+                          </View>
+                        )}
+                        {lvl.rewardStoreItem && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                            <Icon name="gift" size={11} color={palette.primary} />
+                            <Text style={{ color: palette.primary, fontSize: 11 }}>Free gift</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+
+                    {/* Status */}
+                    {isCurrentLevel && (
+                      <View style={{ backgroundColor: tierColor, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 }}>
+                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>CURRENT</Text>
+                      </View>
+                    )}
+                    {isPassed && (
+                      <Icon name="checkmark-circle" size={20} color={palette.success} />
+                    )}
+                  </View>
+                );
+              })}
+              {levels.length === 0 && (
+                <Text style={{ color: palette.mutedText, textAlign: 'center', marginTop: 24 }}>
+                  No levels configured yet. Please seed the levels data.
+                </Text>
+              )}
+            </View>
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -404,10 +1110,34 @@ export function RankingScreen({ palette, onBack }: { palette: ThemeColors; onBac
 
 export function AuthScreen({ palette, onBack, onComplete }: { palette: ThemeColors; onBack: () => void; onComplete: () => void }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const { googleLogin } = useAuth();
+
+  const handleGoogleLogin = async () => {
+    try {
+      await googleLogin();
+      onComplete();
+    } catch (e: any) {
+      console.error(e);
+      alert(e.message || 'Login failed');
+    }
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
       <ScrollView contentContainerStyle={styles.authContainer}>
-        <Pressable onPress={onBack} style={styles.authBack}><Icon name="chevron-back" size={25} color={palette.foreground} /></Pressable><Logo palette={palette} /><Text style={[styles.authTitle, { color: palette.foreground }]}>{mode === 'login' ? 'Welcome back' : 'Join the live side'}</Text><Text style={[styles.authCopy, { color: palette.mutedText }]}>{mode === 'login' ? 'Sign in to pick up where you left off.' : 'Create your profile and find your people.'}</Text><View style={[styles.authInput, { backgroundColor: palette.card, borderColor: palette.border }]}><Icon name="mail-outline" size={18} color={palette.mutedForeground} /><TextInput placeholder="Phone number or email" placeholderTextColor={palette.mutedForeground} style={[styles.authInputText, { color: palette.foreground }]} /></View><Pressable onPress={onComplete} style={[styles.authPrimary, { backgroundColor: palette.primary }]}><Text style={styles.authPrimaryText}>{mode === 'login' ? 'Continue' : 'Create account'}</Text><Icon name="arrow-forward" size={18} color="#fff" /></Pressable><View style={styles.orRow}><View style={[styles.orLine, { backgroundColor: palette.border }]} /><Text style={[styles.orText, { color: palette.mutedForeground }]}>or continue with</Text><View style={[styles.orLine, { backgroundColor: palette.border }]} /></View><View style={styles.socialRow}><Pressable style={[styles.socialButton, { backgroundColor: palette.card, borderColor: palette.border }]}><Icon name="logo-google" size={20} color="#e94f5f" /><Text style={[styles.socialText, { color: palette.foreground }]}>Google</Text></Pressable><Pressable style={[styles.socialButton, { backgroundColor: palette.card, borderColor: palette.border }]}><Icon name="logo-apple" size={20} color={palette.foreground} /><Text style={[styles.socialText, { color: palette.foreground }]}>Apple</Text></Pressable></View><Pressable onPress={() => setMode(mode === 'login' ? 'signup' : 'login')}><Text style={[styles.switchAuth, { color: palette.primary }]}>{mode === 'login' ? 'New here? Create an account' : 'Already have an account? Sign in'}</Text></Pressable></ScrollView>
+        {onBack && <Pressable onPress={onBack} style={styles.authBack}><Icon name="chevron-back" size={25} color={palette.foreground} /></Pressable>}
+        <Logo palette={palette} />
+        <Text style={[styles.authTitle, { color: palette.foreground }]}>{mode === 'login' ? 'Welcome back' : 'Join the live side'}</Text>
+        <Text style={[styles.authCopy, { color: palette.mutedText }]}>{mode === 'login' ? 'Sign in to pick up where you left off.' : 'Create your profile and find your people.'}</Text>
+        <View style={[styles.authInput, { backgroundColor: palette.card, borderColor: palette.border }]}><Icon name="mail-outline" size={18} color={palette.mutedForeground} /><TextInput placeholder="Phone number or email" placeholderTextColor={palette.mutedForeground} style={[styles.authInputText, { color: palette.foreground }]} /></View>
+        <Pressable onPress={() => alert('Please use Google Sign-in for now.')} style={[styles.authPrimary, { backgroundColor: palette.primary }]}><Text style={styles.authPrimaryText}>{mode === 'login' ? 'Continue' : 'Create account'}</Text><Icon name="arrow-forward" size={18} color="#fff" /></Pressable>
+        <View style={styles.orRow}><View style={[styles.orLine, { backgroundColor: palette.border }]} /><Text style={[styles.orText, { color: palette.mutedForeground }]}>or continue with</Text><View style={[styles.orLine, { backgroundColor: palette.border }]} /></View>
+        <View style={styles.socialRow}>
+          <Pressable onPress={handleGoogleLogin} style={[styles.socialButton, { backgroundColor: palette.card, borderColor: palette.border }]}><Icon name="logo-google" size={20} color="#e94f5f" /><Text style={[styles.socialText, { color: palette.foreground }]}>Google</Text></Pressable>
+          <Pressable onPress={() => alert('Apple sign-in is not implemented yet.')} style={[styles.socialButton, { backgroundColor: palette.card, borderColor: palette.border }]}><Icon name="logo-apple" size={20} color={palette.foreground} /><Text style={[styles.socialText, { color: palette.foreground }]}>Apple</Text></Pressable>
+        </View>
+        <Pressable onPress={() => setMode(mode === 'login' ? 'signup' : 'login')}><Text style={[styles.switchAuth, { color: palette.primary }]}>{mode === 'login' ? 'New here? Create an account' : 'Already have an account? Sign in'}</Text></Pressable>
+      </ScrollView>
     </View>
   );
 }
@@ -449,7 +1179,7 @@ export function ChatScreen({ palette, onBack, conversationId }: { palette: Theme
   );
 }
 
-export function LiveRoom({ palette, mode, onClose }: { palette: ThemeColors; mode: RoomMode; onClose: () => void }) {
+export function LiveRoom({ palette, mode, onClose, broadcastId, channelName, isBroadcaster = false }: { palette: ThemeColors; mode: RoomMode; onClose: () => void; broadcastId?: string; channelName?: string; isBroadcaster?: boolean }) {
   const insets = useSafeAreaInsets();
   const sendGift = useStreamStore((state) => state.sendGift);
   const addPkScore = useStreamStore((state) => state.addPkScore);
@@ -460,34 +1190,182 @@ export function LiveRoom({ palette, mode, onClose }: { palette: ThemeColors; mod
   const toggleFollowing = useStreamStore((state) => state.toggleFollowing);
   const [giftOpen, setGiftOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [selectedGift, setSelectedGift] = useState(gifts[0]);
+  const [activeGiftsList, setActiveGiftsList] = useState<any[]>(gifts);
+  const [selectedGift, setSelectedGift] = useState<any>(gifts[0]);
   const [showGift, setShowGift] = useState(false);
   const [winner, setWinner] = useState(false);
   const [muted, setMuted] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(124);
-  const [chatFeed, setChatFeed] = useState(['Welcome to the room. Be kind and have fun.', 'John Daveldeo  ·  Very Nice Cloths', 'You received a new follower']);
+  
+  const [entryEffects, setEntryEffects] = useState<any[]>([]);
+  const [levelUpEvents, setLevelUpEvents] = useState<any[]>([]);
+  const [storeItems, setStoreItems] = useState<any[]>([]);
+
+  useEffect(() => {
+    getActiveGifts()
+      .then((serverGifts) => {
+        if (serverGifts && serverGifts.length > 0) {
+          const mapped = serverGifts.map((g: any) => ({
+            id: g._id,
+            label: g.name,
+            name: g.name,
+            icon: 'gift',
+            price: g.price,
+            color: '#f423a0',
+            imageUrl: g.imageUrl,
+            animationUrl: g.animationUrl,
+          }));
+          setActiveGiftsList(mapped);
+          setSelectedGift(mapped[0]);
+        }
+      })
+      .catch(console.error);
+
+    getStoreItems().then((items) => {
+      if (items) setStoreItems(items);
+    }).catch(console.error);
+  }, []);
+  const [chatFeed, setChatFeed] = useState<any[]>([{ sender: { displayName: 'System' }, text: 'Welcome to the room. Be kind and have fun.' }]);
+  const [viewerCount, setViewerCount] = useState(0);
+  const [chatMessage, setChatMessage] = useState('');
+  const [broadcastDetails, setBroadcastDetails] = useState<any>(null);
+  const [duration, setDuration] = useState(0);
+  const cameraRef = useRef<AgoraVideoViewRef>(null);
+  const { user } = useAuth();
+  
   const pulse = useMemo(() => new Animated.Value(1), []);
   React.useEffect(() => { Animated.loop(Animated.sequence([Animated.timing(pulse, { toValue: 1.08, duration: 900, useNativeDriver: true }), Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true })])).start(); }, [pulse]);
+  
   React.useEffect(() => {
-    if (mode !== 'pk' || winner) return;
-    const timer = setInterval(() => setSecondsLeft((value) => {
-      if (value <= 1) { setWinner(true); return 0; }
-      return value - 1;
-    }), 1000);
-    return () => clearInterval(timer);
-  }, [mode, winner]);
-  React.useEffect(() => {
-    if (mode === 'pk') return;
-    const timer = setInterval(() => setChatFeed((items) => [...items, 'A new viewer joined the room'].slice(-5)), 4200);
-    return () => clearInterval(timer);
-  }, [mode]);
+    if (!broadcastId) return;
+    let isMounted = true;
+    
+    getBroadcastById(broadcastId).then(data => {
+      if (isMounted && data) setBroadcastDetails(data);
+    }).catch(console.error);
+    
+    let durationTimer = setInterval(() => {
+      setDuration(d => d + 1);
+    }, 1000);
+    
+    const handleViewerCount = (count: number) => setViewerCount(count);
+    const handleNewMessage = (msg: any) => {
+      setChatFeed(prev => [...prev, { sender: msg.sender || { displayName: 'User', currentLevel: 1 }, text: msg.text }].slice(-12));
+    };
+    const handleBroadcastEnded = (data?: any) => {
+      Keyboard.dismiss();
+      AsyncStorage.removeItem('active-broadcast').catch(() => {});
+      const msg =
+        data?.reason === 'admin_forced'
+          ? 'تم إنهاء هذا البث بواسطة إدارة التطبيق'
+          : 'انتهى البث المباشر';
+      Alert.alert('تنبيه', msg, [{ text: 'حسناً' }]);
+      onClose();
+    };
+    const handleBroadcasterDisconnected = () => {
+      setChatFeed(prev => [...prev, `Broadcaster disconnected...`].slice(-8));
+    };
+    const handleBroadcasterReconnected = () => {
+      setChatFeed(prev => [...prev, `Broadcaster reconnected!`].slice(-8));
+    };
+    const handleGiftReceived = (data: any) => {
+      setSelectedGift(data.gift);
+      setShowGift(true);
+      setTimeout(() => setShowGift(false), 1600);
+    };
+    const handleEntryEffect = (data: any) => {
+      setEntryEffects(prev => [...prev, data]);
+      setTimeout(() => setEntryEffects(prev => prev.filter(e => e !== data)), 4000);
+    };
+    const handleLevelUp = (data: any) => {
+      setLevelUpEvents(prev => [...prev, data]);
+      setTimeout(() => setLevelUpEvents(prev => prev.filter(e => e !== data)), 4000);
+    };
+
+    socketService.connect().then(() => {
+      if (!isMounted) return;
+      socketService.joinRoom(broadcastId);
+      socketService.on('viewerCount', handleViewerCount);
+      socketService.on('newMessage', handleNewMessage);
+      socketService.on('broadcastEnded', handleBroadcastEnded);
+      socketService.on('broadcasterDisconnected', handleBroadcasterDisconnected);
+      socketService.on('broadcasterReconnected', handleBroadcasterReconnected);
+      socketService.on('giftReceived', handleGiftReceived);
+      socketService.on('userEntryEffect', handleEntryEffect);
+      socketService.on('levelUp', handleLevelUp);
+    });
+
+    let heartbeatTimer: any;
+    if (isBroadcaster) {
+      heartbeatTimer = setInterval(() => {
+        sendHeartbeat(broadcastId).catch(console.error);
+      }, 30000);
+    }
+
+    return () => {
+      isMounted = false;
+      if (broadcastId) socketService.leaveRoom(broadcastId);
+      
+      socketService.off('viewerCount', handleViewerCount);
+      socketService.off('newMessage', handleNewMessage);
+      socketService.off('broadcastEnded', handleBroadcastEnded);
+      socketService.off('broadcasterDisconnected', handleBroadcasterDisconnected);
+      socketService.off('broadcasterReconnected', handleBroadcasterReconnected);
+      socketService.off('giftReceived', handleGiftReceived);
+      socketService.off('userEntryEffect', handleEntryEffect);
+      socketService.off('levelUp', handleLevelUp);
+
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (durationTimer) clearInterval(durationTimer);
+    };
+  }, [broadcastId, isBroadcaster, onClose]);
+
+  const handleClose = () => {
+    Keyboard.dismiss();
+    if (isBroadcaster) {
+      Alert.alert(
+        'End Broadcast',
+        'Are you sure you want to end your live broadcast?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'End', 
+            style: 'destructive',
+            onPress: () => {
+              if (broadcastId) {
+                endBroadcast(broadcastId)
+                  .then(() => AsyncStorage.removeItem('active-broadcast'))
+                  .catch(console.error);
+              }
+              onClose();
+            }
+          }
+        ]
+      );
+    } else {
+      onClose();
+    }
+  };
+
+  const handleMute = () => {
+    const newMuted = !muted;
+    setMuted(newMuted);
+    cameraRef.current?.muteAudio(newMuted);
+  };
+  
+  const formatDuration = `${String(Math.floor(duration / 60)).padStart(2, '0')}:${String(duration % 60).padStart(2, '0')}`;
   const scoreTotal = Math.max(pkScores.left + pkScores.right, 1);
   const formatTimer = `${String(Math.floor(secondsLeft / 60)).padStart(2, '0')}:${String(secondsLeft % 60).padStart(2, '0')}`;
   const sendSelectedGift = () => {
-    if (sendGift(selectedGift.price)) {
-      if (mode === 'pk') addPkScore('left', selectedGift.price * 3);
-      setShowGift(true);
-      setTimeout(() => setShowGift(false), 1600);
+    if (broadcastId && sendGift(selectedGift.price)) {
+      socketService.sendGift(broadcastId, selectedGift);
+      // We don't show animation here, we rely on the socket event to trigger it for everyone!
+    }
+  };
+  const sendMessage = () => {
+    if (broadcastId && chatMessage.trim()) {
+      socketService.sendMessage(broadcastId, chatMessage);
+      setChatMessage('');
     }
   };
   const shareRoom = () => { Share.share({ message: 'Join me in StreamZone live: https://streamzone.example/live' }); };
@@ -496,14 +1374,173 @@ export function LiveRoom({ palette, mode, onClose }: { palette: ThemeColors; mod
   return (
     <View style={{ flex: 1, backgroundColor: '#17071d' }}>
       <StatusBar style="light" />
-      {mode === 'pk' ? <View style={styles.pkVideoRow}><Image source={streamParty} style={styles.pkImage} /><Image source={streamHost} style={styles.pkImage} /><View style={styles.pkLabel}><Text style={styles.pkLabelText}>PK  {formatTimer}</Text></View></View> : <ImageBackground source={streamParty} style={styles.roomImage}><LinearGradient colors={['rgba(16,3,24,0.35)', 'rgba(17,5,27,0.96)']} style={StyleSheet.absoluteFillObject} /></ImageBackground>}
-      <View style={[styles.roomTop, { paddingTop: insets.top + 8 }]}><Pressable onPress={onClose} style={styles.roomClose}><Icon name="chevron-back" size={25} color="#fff" /></Pressable><Avatar uri={avatarImages[1]} size={40} ring /><View style={{ flex: 1 }}><Text style={styles.roomHost}>Andrew Filder</Text><Text style={styles.roomHostMeta}>ID : 703120</Text></View><View style={styles.viewerStack}>{avatarImages.slice(2, 5).map((uri) => <Avatar key={uri} uri={uri} size={24} ring style={{ marginLeft: -7 }} />)}<Text style={styles.viewerMore}>+365</Text></View><Pressable onPress={shareRoom} style={styles.roomClose}><Icon name="share-social-outline" size={21} color="#fff" /></Pressable><Pressable onPress={() => setMoreOpen(true)} style={styles.roomClose}><Icon name="ellipsis-horizontal" size={21} color="#fff" /></Pressable><Pressable onPress={onClose} style={styles.roomClose}><Icon name="close" size={23} color="#fff" /></Pressable></View>
-      {mode === 'pk' ? <View style={styles.pkScore}><View style={styles.scoreLabels}><Text style={styles.scoreText}>Win x1  •  {pkScores.left}</Text><Text style={styles.scoreText}>{pkScores.right}  •  Win x0</Text></View><View style={styles.scoreTrack}><View style={[styles.scoreFill, { backgroundColor: palette.cyan, width: `${(pkScores.left / scoreTotal) * 100}%` }]} /><View style={[styles.scoreFill, { backgroundColor: palette.pink, width: `${(pkScores.right / scoreTotal) * 100}%` }]} /></View></View> : <View style={styles.hostOverlay}><View style={styles.hostPill}><Avatar uri={avatarImages[1]} size={35} /><View><Text style={styles.roomHost}>Saniya lieo</Text><Text style={styles.roomHostMeta}>Live now  ·  12.4K</Text></View></View><PillButton label={following.includes('room-1') ? 'Following' : 'Follow'} icon="person-add" onPress={() => toggleFollowing('room-1')} palette={{ ...palette, primary: '#f423a0' }} small /></View>}
-      <View style={styles.roomChat}>{chatFeed.map((item, index) => <View key={`${item}-${index}`} style={[styles.roomChatBubble, index === 0 && { backgroundColor: 'rgba(53,22,73,0.82)' }]}><Text style={styles.roomChatText}>{item}</Text></View>)}</View>
-      {showGift ? <Animated.View style={[styles.giftSent, { transform: [{ scale: pulse }] }]}><Icon name={selectedGift.icon as IconName} size={42} color={selectedGift.color} /><Text style={styles.giftSentText}>{selectedGift.label} sent</Text></Animated.View> : null}
+      {mode === 'pk' ? (
+        <View style={styles.pkVideoRow}>
+          <Image source={streamParty} style={styles.pkImage} />
+          <Image source={streamHost} style={styles.pkImage} />
+          <View style={styles.pkLabel}><Text style={styles.pkLabelText}>PK  {formatTimer}</Text></View>
+        </View>
+      ) : (
+        <View style={StyleSheet.absoluteFill}>
+          {broadcastId && channelName ? (
+            <AgoraVideoView ref={cameraRef} broadcastId={broadcastId} channelName={channelName} isBroadcaster={isBroadcaster} />
+          ) : (
+            <ImageBackground source={streamParty} style={styles.roomImage}>
+              <LinearGradient colors={['rgba(16,3,24,0.35)', 'rgba(17,5,27,0.96)']} style={StyleSheet.absoluteFillObject} />
+            </ImageBackground>
+          )}
+          {/* Overlay gradient so UI is legible */}
+          <LinearGradient colors={['rgba(16,3,24,0.3)', 'transparent', 'rgba(17,5,27,0.8)']} style={StyleSheet.absoluteFillObject} pointerEvents="none" />
+        </View>
+      )}
+      <View style={[styles.roomTop, { paddingTop: insets.top + 8 }]}>
+        <Pressable onPress={handleClose} style={styles.roomClose}>
+          <Icon name="chevron-back" size={25} color="#fff" />
+        </Pressable>
+        <Avatar uri={broadcastDetails?.broadcaster?.avatarUrl || avatarImages[1]} size={40} ring />
+        <View style={{ flex: 1, paddingLeft: 4 }}>
+          <Text style={styles.roomHost} numberOfLines={1}>{broadcastDetails?.broadcaster?.displayName || broadcastDetails?.broadcaster?.username || channelName || 'Broadcaster'}</Text>
+          <Text style={styles.roomHostMeta} numberOfLines={1}>{broadcastDetails?.title || 'Live'} • {formatDuration}</Text>
+        </View>
+        <View style={[styles.viewerStack, { backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, marginRight: 8, flexDirection: 'row', alignItems: 'center' }]}>
+          <Icon name="people" size={14} color="#fff" style={{ marginRight: 4 }} />
+          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{viewerCount}</Text>
+        </View>
+        {isBroadcaster && (
+          <Pressable onPress={() => cameraRef.current?.switchCamera()} style={styles.roomClose}>
+            <Icon name="camera-reverse-outline" size={21} color="#fff" />
+          </Pressable>
+        )}
+        <Pressable onPress={handleClose} style={styles.roomClose}>
+          <Icon name="close" size={23} color="#fff" />
+        </Pressable>
+      </View>
+      <View style={styles.roomChat}>
+        {/* Entry Effects */}
+        {entryEffects.map((eff, index) => {
+          const item = storeItems.find((i) => i._id === eff.entryEffectId);
+          return (
+            <Animated.View key={`entry-${index}`} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(233,184,36,0.2)', padding: 8, borderRadius: 20, marginBottom: 8, alignSelf: 'flex-start' }}>
+              {item && item.imageUrl ? (
+                <Image source={{ uri: item.imageUrl }} style={{ width: 40, height: 40, marginRight: 8, resizeMode: 'contain' }} />
+              ) : (
+                <Icon name="car" size={24} color={palette.gold} style={{ marginRight: 8 }} />
+              )}
+              <Text style={{ color: palette.gold, fontWeight: 'bold', fontSize: 13 }}>{eff.user?.displayName || 'User'} entered the room!</Text>
+            </Animated.View>
+          );
+        })}
+
+        {/* Level Up Events */}
+        {levelUpEvents.map((evt, index) => (
+          <Animated.View key={`lvl-${index}`} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(244,35,160,0.2)', padding: 8, borderRadius: 20, marginBottom: 8, alignSelf: 'flex-start', borderWidth: 1, borderColor: palette.primary }}>
+            <Icon name="arrow-up-circle" size={24} color={palette.primary} style={{ marginRight: 8 }} />
+            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>{evt.userId === user?._id ? 'You' : 'User'} leveled up to {evt.currentLevel?.level || evt.currentLevel}!</Text>
+          </Animated.View>
+        ))}
+
+        {chatFeed.map((item, index) => {
+          const isSystem = item.sender?.displayName === 'System';
+          const hasBubble = !!item.sender?.activeChatBubble;
+          const levelBadgeUrl = item.sender?.levelBadgeUrl;
+          const currentLevel = item.sender?.currentLevel;
+
+          return (
+            <View
+              key={`${index}`}
+              style={[
+                styles.roomChatBubble,
+                isSystem && { backgroundColor: 'rgba(53,22,73,0.82)' },
+                hasBubble && { borderColor: palette.primary, borderWidth: 1, backgroundColor: 'rgba(16,3,24,0.7)' },
+                { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }
+              ]}
+            >
+              {!isSystem && levelBadgeUrl ? (
+                <Image source={{ uri: levelBadgeUrl }} style={{ width: 16, height: 16, borderRadius: 8, marginRight: 6 }} />
+              ) : !isSystem && currentLevel ? (
+                <View style={{ backgroundColor: palette.purple, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1, marginRight: 6 }}>
+                  <Text style={{ fontSize: 10, color: '#fff', fontWeight: '800' }}>Lv.{currentLevel}</Text>
+                </View>
+              ) : null}
+              <Text style={[styles.roomChatText, { color: isSystem ? palette.primary : palette.gold, fontWeight: '700', marginRight: 4 }]}>
+                {item.sender?.displayName}:
+              </Text>
+              <Text style={[styles.roomChatText, hasBubble && { color: '#fff' }]}>{item.text}</Text>
+            </View>
+          );
+        })}
+      </View>
+      {showGift && selectedGift ? (
+        <Animated.View style={[styles.giftSent, { transform: [{ scale: pulse }] }]}>
+          {selectedGift.imageUrl ? (
+            <Image source={{ uri: selectedGift.imageUrl }} style={{ width: 44, height: 44, resizeMode: 'contain' }} />
+          ) : (
+            <Icon name={(selectedGift.icon || 'gift') as IconName} size={42} color={selectedGift.color || '#f423a0'} />
+          )}
+          <Text style={styles.giftSentText}>{selectedGift.label || selectedGift.name || 'Gift'} sent</Text>
+        </Animated.View>
+      ) : null}
       {winner ? <View style={styles.winnerOverlay}><View style={styles.confettiLayer}>{Array.from({ length: 16 }).map((_, index) => <ConfettiPiece key={index} index={index} />)}</View><Icon name="trophy" size={52} color={palette.gold} /><Text style={styles.winnerTitle}>Winner</Text><Text style={styles.winnerCopy}>{pkScores.left >= pkScores.right ? 'Saniya lieo takes the round' : 'Andrew Filder takes the round'}</Text><PillButton label="Back to room" onPress={() => { setWinner(false); if (mode === 'pk') { resetPkScores(); setSecondsLeft(124); } }} palette={palette} /></View> : null}
-      {moreOpen ? <View style={[styles.moreSheet, { backgroundColor: palette.panel }]}><View style={styles.sheetHandle} /><Text style={[styles.sheetTitle, { color: palette.foreground }]}>Room options</Text>{[['flag', 'Report'], ['ban', 'Block'], ['share-social-outline', 'Share'] as [IconName, string]].map(([icon, label]) => <Pressable key={label} onPress={() => { setMoreOpen(false); if (label === 'Share') shareRoom(); }} style={styles.moreItem}><Icon name={icon} size={20} color={palette.primary} /><Text style={[styles.moreText, { color: palette.foreground }]}>{label}</Text><Icon name="chevron-forward" size={17} color={palette.mutedForeground} /></Pressable>)}</View> : null}
-      {giftOpen ? <View style={[styles.giftSheet, { backgroundColor: palette.panel }]}><View style={styles.sheetHandle} /><View style={styles.giftSheetHeader}><Text style={[styles.sheetTitle, { color: palette.foreground }]}>Send a gift</Text><Text style={[styles.coinBalance, { color: palette.gold }]}><Icon name="diamond" size={13} color={palette.gold} /> {coins.toLocaleString()}</Text><Pressable onPress={() => setGiftOpen(false)}><Icon name="close" size={21} color={palette.mutedForeground} /></Pressable></View><View style={styles.giftGrid}>{gifts.map((gift) => <Pressable key={gift.id} onPress={() => setSelectedGift(gift)} style={[styles.giftItem, selectedGift.id === gift.id && { borderColor: palette.primary, backgroundColor: palette.secondary }]}><Icon name={gift.icon as IconName} size={27} color={gift.color} /><Text style={[styles.giftLabel, { color: palette.mutedText }]}>{gift.label}</Text><Text style={[styles.giftPrice, { color: palette.gold }]}>{gift.price}</Text></Pressable>)}</View><Pressable onPress={sendSelectedGift} style={[styles.fullButton, { backgroundColor: palette.primary }]}><Text style={styles.fullButtonText}>Send {selectedGift.label}</Text><Icon name="paper-plane" size={16} color="#fff" /></Pressable></View> : <View style={[styles.roomBottom, { paddingBottom: insets.bottom + 9 }]}><View style={[styles.roomInput, { backgroundColor: 'rgba(61,31,74,0.86)' }]}><Text style={styles.roomInputText}>Type something...</Text></View><Pressable onPress={() => setGiftOpen(true)} style={styles.roomAction}><Icon name="gift" size={24} color={palette.gold} /></Pressable><Pressable onPress={() => setMuted(!muted)} style={styles.roomAction}><Icon name={muted ? 'mic-off' : 'mic'} size={22} color="#fff" /></Pressable><Pressable onPress={() => mode === 'pk' ? setWinner(true) : setGiftOpen(true)} style={styles.roomAction}><Icon name={mode === 'pk' ? 'trophy' : 'heart'} size={23} color={palette.primary} /></Pressable></View>}
+      {moreOpen ? <View style={[styles.moreSheet, { backgroundColor: palette.panel }]}><View style={styles.sheetHandle} /><Text style={[styles.sheetTitle, { color: palette.foreground }]}>Room options</Text>{([['flag', 'Report'], ['ban', 'Block'], ['share-social-outline', 'Share']] as const).map(([icon, label]) => <Pressable key={label} onPress={() => { setMoreOpen(false); if (label === 'Share') shareRoom(); }} style={styles.moreItem}><Icon name={icon as IconName} size={20} color={palette.primary} /><Text style={[styles.moreText, { color: palette.foreground }]}>{label}</Text><Icon name="chevron-forward" size={17} color={palette.mutedForeground} /></Pressable>)}</View> : null}
+      {giftOpen ? (
+        <View style={[styles.giftSheet, { backgroundColor: palette.panel }]}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.giftSheetHeader}>
+            <Text style={[styles.sheetTitle, { color: palette.foreground }]}>Send a gift</Text>
+            <Text style={[styles.coinBalance, { color: palette.gold }]}>
+              <Icon name="diamond" size={13} color={palette.gold} /> {coins.toLocaleString()}
+            </Text>
+            <Pressable onPress={() => setGiftOpen(false)}>
+              <Icon name="close" size={21} color={palette.mutedForeground} />
+            </Pressable>
+          </View>
+          <View style={styles.giftGrid}>
+            {activeGiftsList.map((gift) => (
+              <Pressable
+                key={gift.id}
+                onPress={() => setSelectedGift(gift)}
+                style={[
+                  styles.giftItem,
+                  selectedGift?.id === gift.id && {
+                    borderColor: palette.primary,
+                    backgroundColor: palette.secondary,
+                  },
+                ]}
+              >
+                {gift.imageUrl ? (
+                  <Image source={{ uri: gift.imageUrl }} style={{ width: 28, height: 28, resizeMode: 'contain' }} />
+                ) : (
+                  <Icon name={(gift.icon || 'gift') as IconName} size={27} color={gift.color || '#f423a0'} />
+                )}
+                <Text style={[styles.giftLabel, { color: palette.mutedText }]} numberOfLines={1}>
+                  {gift.label || gift.name}
+                </Text>
+                <Text style={[styles.giftPrice, { color: palette.gold }]}>{gift.price}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Pressable onPress={sendSelectedGift} style={[styles.fullButton, { backgroundColor: palette.primary }]}>
+            <Text style={styles.fullButtonText}>Send {selectedGift?.label || selectedGift?.name || 'Gift'}</Text>
+            <Icon name="paper-plane" size={16} color="#fff" />
+          </Pressable>
+        </View>
+      ) : (
+        <View style={[styles.roomBottom, { paddingBottom: insets.bottom + 9 }]}>
+          <View style={[styles.roomInput, { backgroundColor: 'rgba(61,31,74,0.86)' }]}>
+            <TextInput value={chatMessage} onChangeText={setChatMessage} onSubmitEditing={sendMessage} placeholder="Type something..." placeholderTextColor="rgba(255,255,255,0.6)" style={styles.roomInputText} />
+          </View>
+          {!isBroadcaster && (
+            <Pressable onPress={() => setGiftOpen(true)} style={styles.roomAction}>
+              <Icon name="gift" size={24} color={palette.gold} />
+            </Pressable>
+          )}
+          {isBroadcaster && (
+            <Pressable onPress={handleMute} style={styles.roomAction}>
+              <Icon name={muted ? 'mic-off' : 'mic'} size={22} color="#fff" />
+            </Pressable>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -522,8 +1559,13 @@ function VoiceRoom({ palette, onClose }: { palette: ThemeColors; onClose: () => 
   );
 }
 
+function ConfettiPiece({ index }: { index: number }) {
+  return <View style={{ width: 8, height: 8, backgroundColor: ['#ff0', '#f0f', '#0ff'][index % 3], position: 'absolute', top: Math.random() * 100, left: Math.random() * 100 }} />;
+}
+
 export default function StreamZoneApp() {
   const { width } = useWindowDimensions();
+  const { user, isInitializing } = useAuth();
   const [screen, setScreen] = useState<Screen>('home');
   const [roomMode, setRoomMode] = useState<RoomMode>('room');
   const [previousScreen, setPreviousScreen] = useState<Screen>('home');
@@ -533,12 +1575,36 @@ export default function StreamZoneApp() {
   const toggleTheme = useStreamStore((state) => state.toggleTheme);
   const palette = theme === 'dark' ? colors.dark : colors.light;
   const compact = width < 390;
+  
+  const [activeBroadcastId, setActiveBroadcastId] = useState<string | undefined>();
+  const [activeChannelName, setActiveChannelName] = useState<string | undefined>();
+  const [activeConversationId, setActiveConversationId] = useState<string>('');
+
   const go = (next: Screen) => { setPreviousScreen(screen); setScreen(next); };
-  const openRoom = (mode: RoomMode) => { setRoomMode(mode); setPreviousScreen(screen); setScreen(mode); };
+  const openRoom = (mode: RoomMode, broadcastId?: string, channelName?: string) => { 
+    setRoomMode(mode); 
+    setActiveBroadcastId(broadcastId);
+    setActiveChannelName(channelName);
+    setPreviousScreen(screen); 
+    setScreen(mode); 
+  };
   const goBack = () => setScreen(previousScreen === 'room' || previousScreen === 'pk' || previousScreen === 'multi' || previousScreen === 'voice' ? 'home' : previousScreen);
-  const selectTab = (tab: 'home' | 'feed' | 'messages' | 'profile') => { setActiveTab(tab); setScreen(tab === 'home' ? 'home' : tab); };
-  const screenContent = screen === 'home' ? <HomeScreen palette={palette} onNavigate={go} onOpenRoom={openRoom} /> : screen === 'feed' ? <FeedScreen palette={palette} onBack={() => selectTab('home')} onOpenRoom={openRoom} /> : screen === 'messages' ? <MessagesScreen palette={palette} onOpenChat={() => go('chat')} /> : screen === 'profile' ? <ProfileScreen palette={palette} onNavigate={go} onTheme={toggleTheme} /> : screen === 'wallet' ? <WalletScreen palette={palette} onBack={goBack} onNavigate={go} /> : screen === 'income' ? <IncomeScreen palette={palette} onBack={goBack} /> : screen === 'store' ? <StoreScreen palette={palette} onBack={goBack} /> : screen === 'free' ? <FreeDiamondsScreen palette={palette} onBack={goBack} /> : screen === 'ranking' ? <RankingScreen palette={palette} onBack={goBack} /> : screen === 'auth' ? <AuthScreen palette={palette} onBack={goBack} onComplete={() => go('setup')} /> : screen === 'setup' ? <SetupScreen palette={palette} onBack={goBack} onDone={() => setScreen('profile')} /> : screen === 'chat' ? <ChatScreen palette={palette} conversationId="c1" onBack={goBack} /> : <LiveRoom palette={palette} mode={roomMode} onClose={() => setScreen(previousScreen === 'feed' ? 'feed' : 'home')} />;
-  const showNav = ['home', 'feed', 'messages', 'profile'].includes(screen);
+  const selectTab = (tab: 'home' | 'rooms' | 'messages' | 'profile') => { setActiveTab(tab); setScreen(tab === 'home' ? 'home' : tab); };
+  const screenContent = screen === 'home' ? <HomeScreen palette={palette} onNavigate={go} onOpenRoom={openRoom} /> : screen === 'feed' ? <FeedScreen palette={palette} onBack={() => selectTab('home')} onOpenRoom={openRoom} /> : screen === 'messages' ? <MessagesScreen palette={palette} onOpenChat={(id) => { setActiveConversationId(id); go('chat'); }} /> : screen === 'profile' ? <ProfileScreen palette={palette} onNavigate={go} onTheme={toggleTheme} /> : screen === 'wallet' ? <WalletScreen palette={palette} onBack={goBack} onNavigate={go} /> : screen === 'income' ? <IncomeScreen palette={palette} onBack={goBack} /> : screen === 'store' ? <StoreScreen palette={palette} onBack={goBack} /> : screen === 'free' ? <FreeDiamondsScreen palette={palette} onBack={goBack} /> : screen === 'ranking' ? <RankingScreen palette={palette} onBack={goBack} /> : screen === 'auth' ? <AuthScreen palette={palette} onBack={goBack} onComplete={() => go('setup')} /> : screen === 'setup' ? <SetupScreen palette={palette} onBack={goBack} onDone={() => setScreen('home')} /> : screen === 'chat' ? <ChatScreen palette={palette} conversationId={activeConversationId} onBack={goBack} /> : <LiveRoom palette={palette} mode={roomMode} broadcastId={activeBroadcastId} channelName={activeChannelName} onClose={() => setScreen(previousScreen === 'feed' ? 'feed' : 'home')} />;
+  const showNav = ['home', 'rooms', 'messages', 'profile'].includes(screen);
+  
+  if (isInitializing) {
+    return <View style={{ flex: 1, backgroundColor: palette.background }} />;
+  }
+
+  if (!user) {
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }, compact && { paddingHorizontal: 0 }]}>
+        <AuthScreen palette={palette} onBack={undefined as any} onComplete={() => setScreen('setup')} />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }, compact && { paddingHorizontal: 0 }]}>
       {screenContent}
@@ -807,12 +1873,18 @@ const styles = StyleSheet.create({
   giftSheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 25, borderTopRightRadius: 25, padding: 16, paddingBottom: 25, zIndex: 10 },
   sheetHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.25)', alignSelf: 'center', marginBottom: 14 },
   giftSheetHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 15 },
-  sheetTitle: { flex: 1, fontSize: 17, fontWeight: '900' },
+  sheetTitle: { fontSize: 16, fontWeight: '700', marginBottom: 16 },
   coinBalance: { fontSize: 12, fontWeight: '800' },
-  giftGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  giftItem: { width: '31.8%', minHeight: 76, borderRadius: 13, borderWidth: 1, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
-  giftLabel: { fontSize: 10, marginTop: 3 },
-  giftPrice: { fontSize: 9, fontWeight: '800', marginTop: 2 },
+  giftGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
+  giftItem: { width: '30%', paddingVertical: 12, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: 'transparent' },
+  giftLabel: { fontSize: 12, marginTop: 8 },
+  giftPrice: { fontSize: 12, fontWeight: '700' },
+  viewerStack: { flexDirection: 'row', alignItems: 'center' },
+  viewerMore: { color: '#fff', fontSize: 12, marginLeft: 4 },
+  confettiLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  moreSheet: { position: 'absolute', bottom: 0, left: 0, right: 0, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
+  moreItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14 },
+  moreText: { flex: 1, fontSize: 16, marginLeft: 12 },
   multiTop: { paddingTop: 45, paddingHorizontal: 13, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
   multiRoomBody: { flex: 1, paddingHorizontal: 13 },
   multiCoin: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.14)', paddingHorizontal: 9, paddingVertical: 6, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 5 },

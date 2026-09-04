@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="fireGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#FF1744" />
+      <stop offset="40%" stop-color="#FF6D00" />
+      <stop offset="75%" stop-color="#FFD600" />
+      <stop offset="100%" stop-color="#FFFFFF" />
+    </linearGradient>
+    <filter id="fireGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <circle cx="100" cy="100" r="90" fill="none" stroke="url(#fireGrad)" stroke-width="8" filter="url(#fireGlow)" />
+  <circle cx="100" cy="100" r="83" fill="none" stroke="#FFD600" stroke-width="2" />
+  <path d="M92,15 Q100,0 108,15 Q103,10 100,18 Q97,10 92,15 Z" fill="url(#fireGrad)" filter="url(#fireGlow)" />
+  <path d="M70,22 Q75,12 82,23 Q78,18 75,26 Z" fill="url(#fireGrad)" />
+  <path d="M120,23 Q125,12 130,22 Q126,18 123,26 Z" fill="url(#fireGrad)" />
+</svg>
