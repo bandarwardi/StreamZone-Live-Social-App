@@ -454,7 +454,7 @@ export function ProfileScreen({ palette, onNavigate, onTheme }: { palette: Theme
             <View style={styles.levelRow}>
               <Text style={[styles.levelPill, { backgroundColor: palette.primary }]}>{genderSymbol} {age}</Text>
               {/* Real level badge - tappable to open levels screen */}
-              <Pressable onPress={() => router.push('/levels')} style={[styles.levelPill, { backgroundColor: palette.purple, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+              <Pressable onPress={() => router.push('/levels' as any)} style={[styles.levelPill, { backgroundColor: palette.purple, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
                 {levelBadgeUrl ? (
                   <Image source={{ uri: levelBadgeUrl }} style={{ width: 16, height: 16, borderRadius: 8 }} />
                 ) : (
